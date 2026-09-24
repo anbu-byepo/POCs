@@ -4,47 +4,101 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex" />
-    <title>YouTube integration feasibility spike</title>
+    <title>Ninto -- YouTube connect</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <style>
-      body { font-family: system-ui, sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1rem; color: #1a1a1a; }
-      h1 { font-size: 1.25rem; }
-      h2 { font-size: 1rem; margin-top: 2rem; }
-      button { font: inherit; padding: 0.5rem 1rem; cursor: pointer; }
-      input { font: inherit; padding: 0.4rem; width: 100%; box-sizing: border-box; }
-      #diagnostics { background: #f5f5f5; border: 1px solid #ddd; padding: 0.75rem; font-family: ui-monospace, monospace; font-size: 0.8rem; white-space: pre-wrap; max-height: 280px; overflow-y: auto; }
-      #channel-info { display: flex; gap: 0.75rem; align-items: center; margin-top: 0.75rem; }
+      :root { --ink: #171717; --accent: #159A4B; --accent-dark: #114F3C; --line: #EDEDED; --muted: #6B7280; }
+      body { font-family: Figtree, system-ui, sans-serif; max-width: 720px; margin: 0 auto; padding: 0 0 3rem; color: var(--ink); background: #f1efea; }
+      header { background: var(--accent-dark); color: #fff; padding: 1.25rem 1.25rem 1.5rem; margin-bottom: 1.5rem; }
+      header h1 { font-size: 1.15rem; margin: 0 0 0.35rem; }
+      header p { font-size: 0.8rem; line-height: 1.5; color: rgba(255,255,255,.8); margin: 0; }
+      main { padding: 0 1.25rem; }
+      h2 { font-size: 0.95rem; margin: 2rem 0 0.75rem; color: var(--ink); }
+      button { font: inherit; font-weight: 600; padding: 0.6rem 1.1rem; border-radius: 999px; cursor: pointer; border: none; }
+      button.primary { background: var(--accent); color: #fff; }
+      button.primary:disabled { background: #C9CDC4; cursor: not-allowed; }
+      button.secondary { background: #fff; color: var(--accent); border: 1px solid var(--accent); }
+      input, textarea { font: inherit; padding: 0.55rem 0.7rem; width: 100%; box-sizing: border-box; border: 1px solid #DDE0DC; border-radius: 8px; background: #fff; }
+      label { display: block; font-size: 0.75rem; font-weight: 600; color: var(--muted); letter-spacing: .03em; margin-bottom: 0.3rem; }
+      .card { background: #fff; border: 1px solid rgba(0,0,0,.08); border-radius: 10px; padding: 1rem; box-shadow: 0 1px 3px rgba(0,0,0,.05); }
+      #diagnostics { background: #171717; color: #d8f5e3; border-radius: 8px; padding: 0.75rem; font-family: ui-monospace, monospace; font-size: 0.78rem; white-space: pre-wrap; max-height: 240px; overflow-y: auto; }
+      #channel-info { display: flex; gap: 0.75rem; align-items: center; }
       #channel-info img { border-radius: 50%; width: 48px; height: 48px; }
-      .video-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 1rem; margin-top: 1rem; }
-      .video-grid iframe { width: 100%; aspect-ratio: 16 / 9; border: 0; }
-      .fallback { color: #666; font-style: italic; }
-      .setup { border: 1px solid #ddd; padding: 0.75rem; margin-bottom: 1rem; }
+      .video-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1rem; margin-top: 1rem; }
+      .video-grid iframe { width: 100%; aspect-ratio: 16 / 9; border: 0; border-radius: 8px; }
+      .fallback { color: var(--muted); font-style: italic; }
+      .field { margin-bottom: 0.9rem; }
+      .upload-actions { display: flex; align-items: center; gap: 0.75rem; margin-top: 0.9rem; }
+      .progress-track { flex: 1; height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; }
+      .progress-fill { height: 100%; background: var(--accent); width: 0%; transition: width .15s; }
+      .progress-pct { font-size: 0.78rem; font-weight: 600; color: var(--muted); min-width: 3rem; text-align: right; }
+      .result-link { display: inline-block; margin-top: 0.6rem; font-size: 0.85rem; color: var(--accent); font-weight: 600; }
+      .note { font-size: 0.75rem; color: var(--muted); line-height: 1.5; margin-top: 0.5rem; }
+      fieldset { border: none; padding: 0; margin: 0; }
+      fieldset:disabled { opacity: .5; }
     </style>
   </head>
   <body>
-    <h1>YouTube integration feasibility spike</h1>
-    <p>Internal, non-indexed spike for NINTO-547 -- click Connect, Google's real OAuth popup opens, pick any
-      account, and this page shows that account's YouTube channel + videos. No backend: everything below runs
-      in this browser tab.</p>
+    <header>
+      <h1>Ninto -- Connect &amp; Publish (YouTube)</h1>
+      <p>Real app, YouTube only, for now. Click Connect, pick any Google account in the real consent
+        popup, see that channel's real videos, and upload a real video file straight to it. No backend --
+        everything happens in this browser tab, authenticated with your own OAuth access token.</p>
+    </header>
+    <main>
+      <div class="card">
+        <label for="client-id">Google OAuth Web Client ID</label>
+        <input id="client-id" type="text" placeholder="xxxxxxxxxx.apps.googleusercontent.com" />
+        <p class="note">
+          Saved to this browser's localStorage only. Must be a <strong>Web application</strong>-type client
+          with <code>http://localhost:8000</code> (and/or <code>http://127.0.0.1:8000</code>) under
+          Authorized JavaScript origins, and its OAuth consent screen must list both
+          <code>.../auth/youtube.readonly</code> and <code>.../auth/youtube.upload</code> as scopes (Testing
+          status is fine as long as your account is added as a test user).
+        </p>
+        <div style="margin-top: 0.9rem;">
+          <button id="connect-button" class="primary" disabled>Connect YouTube</button>
+        </div>
+      </div>
 
-    <div class="setup">
-      <label for="client-id">Google OAuth Web Client ID</label>
-      <input id="client-id" type="text" placeholder="xxxxxxxxxx.apps.googleusercontent.com" />
-      <p style="font-size: 0.8rem; color: #666;">
-        Saved to this browser's localStorage only. Must be a <strong>Web application</strong>-type client
-        (not the Desktop-app one used by <code>check.mjs</code>/<code>server.mjs</code>'s ADC flow), with
-        <code>http://localhost:8000</code> (and/or <code>http://127.0.0.1:8000</code>) listed under its
-        Authorized JavaScript origins in Cloud Console.
-      </p>
-    </div>
+      <h2>Channel</h2>
+      <div id="channel-info" class="fallback">Not connected yet.</div>
+      <div id="fallback" class="fallback" hidden>No videos found on this channel.</div>
+      <div class="video-grid" id="video-grid"></div>
 
-    <button id="connect-button" disabled>Connect YouTube</button>
-    <div id="channel-info"></div>
-    <div id="fallback" class="fallback" hidden>No videos found on this channel.</div>
-    <div class="video-grid" id="video-grid"></div>
+      <h2>Upload a video to this channel</h2>
+      <div class="card">
+        <fieldset id="upload-fields" disabled>
+          <div class="field">
+            <label for="upload-file">Video file</label>
+            <input id="upload-file" type="file" accept="video/*" />
+          </div>
+          <div class="field">
+            <label for="upload-title">Title</label>
+            <input id="upload-title" type="text" placeholder="Uploaded from Ninto POC" />
+          </div>
+          <div class="field">
+            <label for="upload-description">Description</label>
+            <textarea id="upload-description" rows="3" placeholder="Optional"></textarea>
+          </div>
+          <button id="upload-button" class="secondary" type="button">Upload to YouTube</button>
+          <div class="upload-actions" id="upload-progress-wrap" hidden>
+            <div class="progress-track"><div class="progress-fill" id="upload-progress-fill"></div></div>
+            <div class="progress-pct" id="upload-progress-pct">0%</div>
+          </div>
+          <div id="upload-result"></div>
+        </fieldset>
+        <p class="note">Uploaded as <strong>private</strong> -- YouTube restricts every upload from an unaudited
+          API project to private viewing, regardless of what's requested here. That's a real Google policy,
+          not a bug in this app.</p>
+      </div>
 
-    <h2>Diagnostics</h2>
-    <div id="diagnostics">(nothing yet)</div>
+      <h2>Diagnostics</h2>
+      <div id="diagnostics">(nothing yet)</div>
+    </main>
 
     <script type="module" src="./app.js"></script>
   </body>

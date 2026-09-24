@@ -1,0 +1,912 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex" />
+<title>Ninto Connect, Publish, Measure -- prototype</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; background: #EDEBE6; font-family: Figtree, system-ui, sans-serif; display: flex; flex-direction: column; align-items: center; padding: 24px 16px 48px; }
+  .page-head { max-width: 620px; text-align: center; margin-bottom: 18px; }
+  .page-head h1 { font-size: 16px; margin: 0 0 6px; color: #1a1a1a; }
+  .page-head p { font-size: 12px; line-height: 1.55; color: rgba(0,0,0,.55); margin: 0; }
+  .quick-nav { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; max-width: 760px; margin-bottom: 16px; }
+  .quick-nav button { font: inherit; font-size: 11px; font-weight: 600; padding: 5px 10px; border-radius: 999px; border: 1px solid rgba(0,0,0,.15); background: #fff; color: #1a1a1a; cursor: pointer; }
+  .quick-nav button.active { background: #114F3C; color: #fff; border-color: #114F3C; }
+  .quick-nav .sep { width: 1px; background: rgba(0,0,0,.15); margin: 0 4px; }
+  .frame { background: #fff; border: 1px solid rgba(0,0,0,.08); border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,.06); overflow: hidden; display: flex; flex-direction: column; position: relative; }
+  .frame-analytics { width: 375px; height: 940px; font-family: Figtree, system-ui, sans-serif; }
+  .frame-publish { width: 372px; height: 786px; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .toggle { width: 44px; height: 26px; border-radius: 13px; padding: 3px; display: flex; cursor: pointer; transition: .15s; }
+  .toggle-knob { width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.25); }
+  [data-nav], [data-drill], [data-qnav], [data-section], [data-home] { cursor: pointer; }
+  .home { display: flex; gap: 20px; flex-wrap: wrap; justify-content: center; max-width: 680px; }
+  .home-card { width: 280px; background: #fff; border: 1px solid rgba(0,0,0,.08); border-radius: 14px; padding: 20px; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+  .home-card h2 { font-size: 15px; margin: 0 0 8px; color: #1a1a1a; }
+  .home-card p { font-size: 12px; line-height: 1.55; color: rgba(0,0,0,.6); margin: 0; }
+  .home-card .tag { display: inline-block; font-size: 10.5px; font-weight: 600; padding: 3px 8px; border-radius: 999px; background: #E4F2E4; color: #1F5B3A; margin-bottom: 10px; }
+</style>
+</head>
+<body>
+
+<div class="page-head" id="page-head"></div>
+<div class="quick-nav" id="quick-nav"></div>
+<div class="home" id="home"></div>
+<div class="frame-wrap" id="frame-wrap" style="display:none">
+  <div class="frame" id="frame"></div>
+</div>
+
+<script>
+const BADGE_BASE = 'font-size:10.5px;font-weight:600;padding:3px 8px;border-radius:999px;flex:none;white-space:nowrap;';
+const BADGE = {
+  Ninto: BADGE_BASE + 'background:#E4F2E4;color:#1F5B3A',
+  YouTube: BADGE_BASE + 'background:#FDECEA;color:#C0392B',
+  Instagram: BADGE_BASE + 'background:#F5EAF6;color:#8E3E9B',
+  LinkedIn: BADGE_BASE + 'background:#E9F0FA;color:#25588F'
+};
+
+const POSTS = [
+  { title: 'Why your thyroid numbers can be "normal" and you can still feel terrible', source: 'Ninto', date: '28 Mar 2026', views: '1.6K', saves: '84', replies: '12', conv: '31', out: 0, thumbLabel: '', dark: false },
+  { title: 'PCOS Insulin Resistance Explained', source: 'YouTube', date: '14 Apr 2026', views: '12.4K', saves: '318', replies: '89', conv: '96', out: 412, thumbLabel: '3:24', dark: true },
+  { title: 'The lab panel I actually order before a PCOS diagnosis', source: 'Ninto', date: '9 Apr 2026', views: '2.9K', saves: '204', replies: '37', conv: '44', out: 0, thumbLabel: '', dark: false },
+  { title: 'Reversing an HbA1c of 6.8 without aggressive medication', source: 'Instagram', date: '2 Apr 2026', views: '8.1K', saves: '96', replies: '54', conv: '18', out: 188, thumbLabel: '0:58', dark: true },
+  { title: 'Three things care seekers ask me about thyroid medication timing', source: 'Ninto', date: '27 Mar 2026', views: '1.2K', saves: '61', replies: '19', conv: '12', out: 0, thumbLabel: '', dark: false },
+  { title: 'What continuous glucose monitoring shows that a fasting test misses', source: 'LinkedIn', date: '21 Mar 2026', views: '4.4K', saves: '52', replies: '23', conv: '9', out: 96, thumbLabel: '', dark: false }
+];
+const SORTS = { Conversions: 'conv', Views: 'viewsN', Revenue: 'rev' };
+
+const ANALYTICS_SCREEN_LABEL = { '1a':'1a Overview','1b':'1b Platforms','1c':'1c All posts','1d':'1d Post detail','1e':'1e Link perf.','1i':'1i YT links','1f':'1f Revenue','1g':'1g Top performing' };
+const ANALYTICS_SCREEN_ORDER = ['1a','1b','1c','1d','1e','1i','1f','1g'];
+
+const analyticsState = { screen: '1a', period: '30d', filter: 'All', sort: 'Conversions' };
+
+function tabStyle(active) {
+  return 'padding:7px 15px;border-radius:999px;border:none;cursor:pointer;font-family:inherit;font-size:12.5px;font-weight:600;'
+    + (active ? 'background:#fff;color:#114F3C' : 'background:rgba(255,255,255,.14);color:rgba(255,255,255,.8)');
+}
+function chipStyle(active) {
+  return 'padding:7px 14px;border-radius:999px;cursor:pointer;font-family:inherit;font-size:12.5px;font-weight:600;white-space:nowrap;'
+    + (active ? 'background:#114F3C;color:#fff;border:1px solid #114F3C' : 'background:#fff;color:#4B5563;border:1px solid #E5E7EB');
+}
+function segStyle(active) {
+  return 'flex:1;padding:8px 6px;border-radius:999px;border:none;cursor:pointer;font-family:inherit;font-size:12.5px;font-weight:600;'
+    + (active ? 'background:#fff;color:#114F3C;box-shadow:0 1px 2px rgba(0,0,0,.12)' : 'background:transparent;color:#6B7280');
+}
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' })[c]);
+}
+
+function analyticsComputeVals() {
+  const period = analyticsState.period;
+  const roll = {
+    '7d': { reach: '31.2K', reachDelta: '12%', engagement: '2.1K', conversions: '48', outbound: '1,480' },
+    '30d': { reach: '128.4K', reachDelta: '18%', engagement: '9.2K', conversions: '214', outbound: '6,240' },
+    '90d': { reach: '341.7K', reachDelta: '9%', engagement: '24.6K', conversions: '588', outbound: '17,910' }
+  }[period];
+  const sparkSets = {
+    '7d': [42, 58, 36, 71, 88, 64, 96],
+    '30d': [30, 44, 38, 62, 51, 70, 58, 82, 66, 91, 74, 60, 88, 100],
+    '90d': [22, 34, 48, 40, 58, 66, 52, 74, 86, 70, 92, 80, 96, 100]
+  };
+  const spark = sparkSets[period].map((h, i, a) => ({ height: h, last: i === a.length - 1 }));
+
+  const posts = POSTS.map(p => ({ ...p, badge: BADGE[p.source], outText: p.out ? '↗ ' + p.out + ' clicks Ninto sent to ' + p.source : '' }));
+  const filter = analyticsState.filter;
+  const visiblePosts = filter === 'All' ? posts : posts.filter(p => p.source === filter);
+
+  const topSource = [
+    { title: 'PCOS Insulin Resistance Explained', source: 'YouTube', date: '14 Apr', conv: 96, viewsN: 12400, rev: 144000, out: 412, tags: ['PCOS', 'Insulin resistance'] },
+    { title: 'The lab panel I actually order before a PCOS diagnosis', source: 'Ninto', date: '9 Apr', conv: 44, viewsN: 2900, rev: 66000, out: 0, tags: ['PCOS', 'Care seeker education'] },
+    { title: 'Why your thyroid numbers can be "normal" and you can still feel terrible', source: 'Ninto', date: '28 Mar', conv: 31, viewsN: 1600, rev: 46500, out: 0, tags: ['Thyroid'] },
+    { title: 'Reversing an HbA1c of 6.8 without aggressive medication', source: 'Instagram', date: '2 Apr', conv: 18, viewsN: 8100, rev: 27000, out: 188, tags: ['Type 2 diabetes'] },
+    { title: 'What continuous glucose monitoring shows that a fasting test misses', source: 'LinkedIn', date: '21 Mar', conv: 9, viewsN: 4400, rev: 13500, out: 96, tags: ['Monitoring'] }
+  ];
+  const sortKey = SORTS[analyticsState.sort];
+  const fmtViews = n => n >= 1000 ? (n / 1000).toFixed(1) + 'K' : String(n);
+  const fmtRev = n => '₹' + (n / 1000).toFixed(0) + 'K';
+  const topRanked = [...topSource].sort((a, b) => b[sortKey] - a[sortKey]).map((t, i) => ({
+    ...t, rank: i + 1, badge: BADGE[t.source],
+    primary: analyticsState.sort === 'Views' ? fmtViews(t.viewsN) : analyticsState.sort === 'Revenue' ? fmtRev(t.rev) : String(t.conv),
+    primaryLabel: analyticsState.sort === 'Views' ? 'VIEWS' : analyticsState.sort === 'Revenue' ? 'REVENUE' : 'CONV.',
+    secondary: (analyticsState.sort === 'Conversions' ? fmtViews(t.viewsN) + ' views' : t.conv + ' conversions') + (t.out ? ' · ↗ ' + t.out : '')
+  }));
+  const sortNote = {
+    Conversions: 'Default ranking. Reach is a means, not the outcome.',
+    Views: 'Ranked by reach across Ninto and home platforms.',
+    Revenue: 'Ranked by booking value attributed within 7 days.'
+  }[analyticsState.sort];
+
+  return { periodLabel: { '7d': 'LAST 7 DAYS', '30d': 'LAST 30 DAYS', '90d': 'LAST 90 DAYS' }[period], roll, spark, visiblePosts, topRanked, sortNote };
+}
+
+function backHeader(title, backTarget) {
+  return `<div style="padding:14px 16px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #EDEDED">
+    <span data-nav="${backTarget}" style="font-size:17px;color:#159A4B">&#8592;</span>
+    <span style="font-size:16px;font-weight:600;color:#171717">${title}</span>
+  </div>`;
+}
+
+const ANALYTICS_SCREENS = {
+  '1a': (v) => `
+    <div style="background:#114F3C;color:#fff;padding:14px 16px 16px;display:flex;flex-direction:column;gap:14px;flex:none">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div style="display:flex;align-items:center;gap:10px"><span style="font-size:17px">&#8592;</span><span style="font-size:17px;font-weight:600">Analytics</span></div>
+        <span style="font-size:17px;opacity:.85">&#8942;</span>
+      </div>
+      <div style="display:flex;gap:6px">${['7d','30d','90d'].map(l => `<button type="button" data-period="${l}" style="${tabStyle(analyticsState.period===l)}">${l}</button>`).join('')}</div>
+    </div>
+    <div style="flex:1;overflow:hidden;display:flex;flex-direction:column">
+      <div style="padding:16px 16px 14px;border-bottom:1px solid #EDEDED">
+        <div style="font-size:10.5px;font-weight:600;letter-spacing:.08em;color:#6B7280">TOTAL REACH &middot; ${v.periodLabel}</div>
+        <div style="display:flex;align-items:baseline;gap:10px;margin-top:6px"><span style="font-size:38px;font-weight:700;color:#171717;letter-spacing:-.02em">${v.roll.reach}</span><span style="font-size:12.5px;font-weight:600;color:#159A4B">&#9650; ${v.roll.reachDelta}</span></div>
+        <div style="display:flex;align-items:flex-end;gap:4px;height:36px;margin-top:12px">${v.spark.map(bar => `<div style="flex:1;border-radius:2px 2px 0 0;height:${bar.height}%;background:${bar.last ? '#159A4B' : '#DCE3DA'}"></div>`).join('')}</div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid #EDEDED">
+        <div style="padding:16px;border-right:1px solid #EDEDED"><div style="font-size:26px;font-weight:700;color:#171717">${v.roll.engagement}</div><div style="font-size:10.5px;font-weight:600;letter-spacing:.06em;color:#6B7280;margin-top:3px">ENGAGEMENT</div><div style="font-size:11.5px;color:#9CA3AF;margin-top:5px">saves, replies, likes</div></div>
+        <div style="padding:16px"><div style="font-size:26px;font-weight:700;color:#159A4B">${v.roll.conversions}</div><div style="font-size:10.5px;font-weight:600;letter-spacing:.06em;color:#6B7280;margin-top:3px">CONVERSIONS</div><div style="font-size:11.5px;color:#9CA3AF;margin-top:5px">follows + bookings</div></div>
+      </div>
+      <div style="padding:13px 16px;display:flex;align-items:center;gap:12px;background:#F0FAF3;border-bottom:1px solid #EDEDED"><div style="flex:1"><div style="font-size:11px;font-weight:600;letter-spacing:.06em;color:#1F5B3A">&#8599; TRAFFIC NINTO SENT OUT</div><div style="font-size:11.5px;color:#4B5563;margin-top:4px">Care seekers who opened your posts at source</div></div><div style="text-align:right"><div style="font-size:22px;font-weight:700;color:#159A4B">${v.roll.outbound}</div><div style="font-size:10px;font-weight:600;letter-spacing:.05em;color:#6B7280">CLICKS OUT</div></div></div>
+      <div style="padding:13px 16px 8px;font-size:11px;font-weight:600;letter-spacing:.07em;color:#6B7280">WHERE IT CAME FROM</div>
+      <div style="padding:0 16px 12px;display:flex;flex-direction:column;gap:9px">
+        <div style="display:flex;align-items:center;gap:10px"><span style="width:74px;font-size:12.5px;font-weight:500;color:#171717">On Ninto</span><div style="flex:1;height:8px;border-radius:4px;background:#EDEDED;overflow:hidden"><div style="width:38%;height:100%;background:#114F3C"></div></div><span style="width:52px;text-align:right;font-size:12px;font-weight:600;color:#171717">48.6K</span></div>
+        <div style="display:flex;align-items:center;gap:10px"><span style="width:74px;font-size:12.5px;font-weight:500;color:#171717">YouTube</span><div style="flex:1;height:8px;border-radius:4px;background:#EDEDED;overflow:hidden"><div style="width:52%;height:100%;background:#159A4B"></div></div><span style="width:52px;text-align:right;font-size:12px;font-weight:600;color:#171717">66.1K</span></div>
+        <div style="display:flex;align-items:center;gap:10px"><span style="width:74px;font-size:12.5px;font-weight:500;color:#171717">Instagram</span><div style="flex:1;height:8px;border-radius:4px;background:#EDEDED;overflow:hidden"><div style="width:11%;height:100%;background:#7BC49A"></div></div><span style="width:52px;text-align:right;font-size:12px;font-weight:600;color:#171717">13.7K</span></div>
+      </div>
+      <div style="height:1px;background:#EDEDED"></div>
+      ${[
+        { icon: 'N', title: 'Ninto post analytics', sub: '38 posts &middot; 48.6K views on Ninto', nav: '1c' },
+        { icon: 'P', title: 'Platform analytics', sub: '4 platforms &middot; 79.8K views at source', nav: '1b' },
+        { icon: 'L', title: 'Link performance', sub: '4,910 clicks in &middot; 214 conversions', nav: '1e' },
+        { icon: '&#8599;', title: 'Traffic Ninto sent out', sub: '6,240 clicks to your platform posts', nav: '1e' },
+        { icon: '&#8377;', title: 'Revenue', sub: '123 bookings attributed to content', nav: '1f' },
+        { icon: '&#9733;', title: 'Top performing content', sub: 'Ranked by conversions', nav: '1g' }
+      ].map(d => `<div data-nav="${d.nav}" style="padding:11px 16px;display:flex;flex:none;align-items:center;gap:12px;border-bottom:1px solid #F3F4F6"><div style="width:34px;height:34px;border-radius:9px;background:#ECEDE7;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#114F3C">${d.icon}</div><div style="flex:1"><div style="font-size:13.5px;font-weight:600;color:#171717">${d.title}</div><div style="font-size:11.5px;color:#6B7280;margin-top:2px">${d.sub}</div></div><span style="font-size:13px;color:#9CA3AF">&#8250;</span></div>`).join('')}
+    </div>
+    <div style="display:flex;border-top:1px solid #EDEDED;padding:8px 0 10px;background:#fff;flex:none">
+      <div data-nav="1a" style="flex:1;text-align:center;color:#114F3C"><div style="font-size:15px">&#9737;</div><div style="font-size:9.5px;font-weight:600;margin-top:3px">Home</div></div>
+      <div style="flex:1;text-align:center;color:#9CA3AF"><div style="font-size:15px">&#9993;</div><div style="font-size:9.5px;font-weight:600;margin-top:3px">Inbox</div></div>
+      <div style="flex:1;text-align:center;color:#9CA3AF"><div style="font-size:15px">&#9638;</div><div style="font-size:9.5px;font-weight:600;margin-top:3px">Schedule</div></div>
+      <div style="flex:1;text-align:center;color:#9CA3AF"><div style="font-size:15px">&#9635;</div><div style="font-size:9.5px;font-weight:600;margin-top:3px">Practice</div></div>
+      <div style="flex:1;text-align:center;color:#9CA3AF"><div style="font-size:15px">&#9679;</div><div style="font-size:9.5px;font-weight:600;margin-top:3px">Profile</div></div>
+    </div>
+  `,
+
+  '1b': () => {
+    const platforms = [
+      { abbr: 'YT', name: 'YouTube', status: 'Synced', ok: true, handle: '@drmeeranair', audience: '24.6K', audienceLabel: 'SUBSCRIBERS', posts: '31', fromNinto: '3,120', sync: '2 hours ago' },
+      { abbr: 'IG', name: 'Instagram', status: 'Synced', ok: true, handle: '@dr.meera.endo', audience: '18.2K', audienceLabel: 'FOLLOWERS', posts: '64', fromNinto: '1,840', sync: '4 hours ago' },
+      { abbr: 'IN', name: 'LinkedIn', status: 'Needs reauth', ok: false, handle: 'in/meeranair-endo', audience: '7.4K', audienceLabel: 'FOLLOWERS', posts: '12', fromNinto: '760', sync: '6 days ago' },
+      { abbr: 'SP', name: 'Spotify Podcast', status: 'Synced', ok: true, handle: 'The Metabolic Hour', audience: '2.1K', audienceLabel: 'LISTENERS', posts: '9', fromNinto: '520', sync: 'Yesterday' }
+    ];
+    const pill = ok => 'font-size:10px;font-weight:600;padding:2px 7px;border-radius:999px;' + (ok ? 'background:#E4F2E4;color:#1F5B3A' : 'background:#FDF0E3;color:#9A5B12');
+    return `
+    ${backHeader('Connected platforms', '1a')}
+    <div style="padding:16px;background:#F7F8F5;border-bottom:1px solid #EDEDED"><div style="font-size:12.5px;color:#4B5563;line-height:1.5">Synced platforms pull performance data every 6 hours and post content into your Ninto feed automatically.</div></div>
+    ${platforms.map(p => `
+      <div style="padding:15px 16px;border-bottom:1px solid #F3F4F6;display:flex;gap:12px;align-items:flex-start">
+        <div style="width:38px;height:38px;border-radius:10px;background:#ECEDE7;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#114F3C">${p.abbr}</div>
+        <div style="flex:1">
+          <div style="display:flex;align-items:center;gap:7px"><span style="font-size:14px;font-weight:600;color:#171717">${p.name}</span><span style="${pill(p.ok)}">${p.status}</span></div>
+          <div style="font-size:12px;color:#6B7280;margin-top:3px">${p.handle}</div>
+          <div style="display:flex;gap:14px;margin-top:8px">
+            <div><div style="font-size:14.5px;font-weight:700;color:#171717">${p.audience}</div><div style="font-size:10px;font-weight:600;letter-spacing:.05em;color:#9CA3AF;margin-top:1px">${p.audienceLabel}</div></div>
+            <div><div style="font-size:14.5px;font-weight:700;color:#171717">${p.posts}</div><div style="font-size:10px;font-weight:600;letter-spacing:.05em;color:#9CA3AF;margin-top:1px">SYNCED POSTS</div></div>
+            <div><div style="font-size:14.5px;font-weight:700;color:#159A4B">${p.fromNinto}</div><div style="font-size:10px;font-weight:600;letter-spacing:.05em;color:#9CA3AF;margin-top:1px">&#8599; FROM NINTO</div></div>
+          </div>
+          <div style="font-size:11.5px;color:#9CA3AF;margin-top:9px">Last sync ${p.sync}</div>
+        </div>
+        <span style="font-size:13px;color:#9CA3AF;padding-top:4px">&#8250;</span>
+      </div>
+    `).join('')}
+    <div style="padding:18px 16px"><button type="button" style="width:100%;padding:13px;border-radius:999px;border:1px solid #159A4B;background:#fff;color:#159A4B;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer">+ Connect a platform</button><div style="font-size:11.5px;color:#9CA3AF;text-align:center;margin-top:10px">X, Facebook Pages and Spotify available</div></div>
+  `; },
+
+  '1c': (v) => `
+    <div style="padding:14px 16px 12px;border-bottom:1px solid #EDEDED"><div style="display:flex;align-items:center;gap:12px"><span data-nav="1a" style="font-size:17px;color:#159A4B">&#8592;</span><span style="font-size:16px;font-weight:600;color:#171717">All posts</span><span style="margin-left:auto;font-size:12.5px;font-weight:600;color:#159A4B">Sort: Recent</span></div></div>
+    <div style="padding:12px 16px;display:flex;gap:7px;overflow:hidden;border-bottom:1px solid #EDEDED">${['All', 'Ninto', 'YouTube', 'Instagram', 'LinkedIn'].map(l => `<button type="button" data-filter="${l}" style="${chipStyle(analyticsState.filter===l)}">${l}</button>`).join('')}</div>
+    <div style="flex:1;overflow:hidden">
+      ${v.visiblePosts.map(p => `
+        <div data-nav="1d" style="padding:14px 16px;border-bottom:1px solid #F3F4F6;display:flex;gap:12px">
+          <div style="width:64px;height:44px;border-radius:8px;flex:none;display:flex;align-items:flex-end;padding:5px;box-sizing:border-box;font-size:9.5px;font-weight:600;${p.dark ? 'background:#2A2A2A;color:#fff' : 'background:#ECEDE7;color:#8A8F86'}">${p.thumbLabel}</div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:13px;font-weight:500;color:#171717;line-height:1.4">${escapeHtml(p.title)}</div>
+            <div style="display:flex;align-items:center;gap:6px;margin-top:7px"><span style="${p.badge}">${p.source}</span><span style="font-size:11px;color:#9CA3AF">${p.date}</span></div>
+            <div style="display:flex;gap:10px;margin-top:9px;font-size:11.5px;color:#6B7280;white-space:nowrap"><span>${p.views} views</span><span style="color:#D1D5DB">&middot;</span><span>${p.saves} saves</span><span style="color:#D1D5DB">&middot;</span><span>${p.replies} replies</span></div>
+            <div style="font-size:11.5px;font-weight:600;color:#159A4B;margin-top:5px;white-space:nowrap">${p.outText}</div>
+          </div>
+          <div style="text-align:right;padding-left:2px;flex:none"><div style="font-size:15px;font-weight:700;color:#159A4B">${p.conv}</div><div style="font-size:9.5px;font-weight:600;letter-spacing:.05em;color:#9CA3AF">CONV.</div></div>
+        </div>
+      `).join('')}
+    </div>
+  `,
+
+  '1d': () => `
+    ${backHeader('Post performance', '1c')}
+    <div style="flex:1;overflow:hidden">
+      <div style="padding:16px;display:flex;gap:12px;border-bottom:1px solid #EDEDED"><div style="width:96px;height:60px;border-radius:8px;background:#2A2A2A;color:#fff;font-size:10px;font-weight:600;display:flex;align-items:flex-end;padding:6px">3:24</div><div style="flex:1"><div style="font-size:13.5px;font-weight:600;color:#171717;line-height:1.4">PCOS Insulin Resistance Explained</div><div style="display:flex;align-items:center;gap:6px;margin-top:7px"><span style="font-size:10.5px;font-weight:600;padding:3px 8px;border-radius:999px;background:#FDECEA;color:#C0392B">YouTube</span><span style="font-size:10.5px;font-weight:600;padding:3px 8px;border-radius:999px;background:#E4F2E4;color:#1F5B3A">Synced</span><span style="font-size:11px;color:#9CA3AF">14 Apr</span></div></div></div>
+      <div style="padding:16px 16px 6px;display:flex;align-items:center;gap:8px"><span style="width:7px;height:7px;border-radius:50%;background:#114F3C"></span><span style="font-size:11px;font-weight:600;letter-spacing:.07em;color:#6B7280">ON NINTO</span></div>
+      <div style="margin:0 16px 16px;border:1px solid #EDEDED;border-radius:12px;display:grid;grid-template-columns:1fr 1fr;overflow:hidden">
+        <div style="padding:13px 12px;border-right:1px solid #EDEDED;border-bottom:1px solid #EDEDED"><div style="font-size:20px;font-weight:700;color:#171717">4.2K</div><div style="font-size:10px;font-weight:600;letter-spacing:.05em;color:#9CA3AF;margin-top:2px">VIEWS</div></div>
+        <div style="padding:13px 12px;border-bottom:1px solid #EDEDED"><div style="font-size:20px;font-weight:700;color:#171717">274</div><div style="font-size:10px;font-weight:600;letter-spacing:.05em;color:#9CA3AF;margin-top:2px">LIKES</div></div>
+        <div style="padding:13px 12px;border-right:1px solid #EDEDED;border-bottom:1px solid #EDEDED"><div style="font-size:20px;font-weight:700;color:#171717">318</div><div style="font-size:10px;font-weight:600;letter-spacing:.05em;color:#9CA3AF;margin-top:2px">SAVES</div></div>
+        <div style="padding:13px 12px;border-bottom:1px solid #EDEDED"><div style="font-size:20px;font-weight:700;color:#171717">46</div><div style="font-size:10px;font-weight:600;letter-spacing:.05em;color:#9CA3AF;margin-top:2px">REPLIES</div></div>
+        <div style="grid-column:1/3;border-bottom:1px solid #EDEDED;padding:11px 12px;display:flex;align-items:center;gap:8px;background:#F7F8F5"><span style="font-size:12.5px;color:#4B5563;flex:1">Profile visits from this post</span><span style="font-size:14px;font-weight:700;color:#171717">211</span></div>
+        <div style="grid-column:1/3;padding:11px 12px;display:flex;align-items:center;gap:8px;background:#F0FAF3"><span style="font-size:12.5px;color:#1F5B3A;flex:1">&#8599; Clicks Ninto sent to YouTube</span><span style="font-size:14px;font-weight:700;color:#159A4B">412</span></div>
+      </div>
+      <div style="padding:2px 16px 6px;display:flex;align-items:center;gap:8px"><span style="width:7px;height:7px;border-radius:50%;background:#C0392B"></span><span style="font-size:11px;font-weight:600;letter-spacing:.07em;color:#6B7280">ON YOUTUBE &middot; VIA API</span></div>
+      <div style="margin:0 16px 16px;border:1px solid #EDEDED;border-radius:12px;display:grid;grid-template-columns:1fr 1fr;overflow:hidden">
+        <div style="padding:14px 12px;border-right:1px solid #EDEDED;border-bottom:1px solid #EDEDED"><div style="font-size:20px;font-weight:700;color:#171717">12.4K</div><div style="font-size:10px;font-weight:600;letter-spacing:.05em;color:#9CA3AF;margin-top:2px">VIEWS</div></div>
+        <div style="padding:14px 12px;border-bottom:1px solid #EDEDED"><div style="font-size:20px;font-weight:700;color:#171717">642</div><div style="font-size:10px;font-weight:600;letter-spacing:.05em;color:#9CA3AF;margin-top:2px">LIKES</div></div>
+        <div style="padding:14px 12px;border-right:1px solid #EDEDED"><div style="font-size:20px;font-weight:700;color:#171717">89</div><div style="font-size:10px;font-weight:600;letter-spacing:.05em;color:#9CA3AF;margin-top:2px">COMMENTS</div></div>
+        <div style="padding:14px 12px"><div style="font-size:20px;font-weight:700;color:#171717">2:11</div><div style="font-size:10px;font-weight:600;letter-spacing:.05em;color:#9CA3AF;margin-top:2px">AVG WATCH</div></div>
+        <div style="grid-column:1/3;border-top:1px solid #EDEDED;padding:11px 12px;display:flex;align-items:center;gap:10px;background:#F7F8F5"><div style="flex:1;min-width:0"><div style="font-size:12.5px;font-weight:600;color:#171717">For more metrics, open on YouTube</div><div style="font-size:11px;font-family:ui-monospace,Menlo,monospace;color:#9CA3AF;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">youtube.com/watch?v=k7Qm2Pv</div></div><button type="button" style="flex:none;padding:7px 13px;border-radius:999px;border:1px solid #159A4B;background:#fff;color:#159A4B;font-family:inherit;font-size:11.5px;font-weight:600;cursor:pointer">Open &#8599;</button></div>
+      </div>
+      <div style="margin:0 16px;padding:14px;border-radius:12px;background:#114F3C;color:#fff">
+        <div style="font-size:11px;font-weight:600;letter-spacing:.07em;opacity:.7">YOUR NINTO LINK FOR THIS POST</div>
+        <div style="display:flex;align-items:center;gap:10px;margin-top:9px"><span style="flex:1;font-size:13px;font-weight:600;font-family:ui-monospace,Menlo,monospace">ninto.in/p/meera-pcos1</span><button type="button" style="padding:6px 12px;border-radius:999px;border:none;background:#159A4B;color:#fff;font-family:inherit;font-size:11.5px;font-weight:600;cursor:pointer">Copy</button></div>
+        <div style="font-size:11.5px;opacity:.75;margin-top:9px">Pasted in your YouTube description &middot; verified 2 Apr</div>
+        <div style="display:flex;align-items:center;gap:6px;margin-top:14px;padding-top:13px;border-top:1px solid rgba(255,255,255,.16)">
+          <div style="flex:1"><div style="font-size:17px;font-weight:700">1,842</div><div style="font-size:9.5px;font-weight:600;letter-spacing:.05em;opacity:.7;margin-top:1px">CLICKS</div></div>
+          <span style="opacity:.5">&#8594;</span>
+          <div style="flex:1"><div style="font-size:17px;font-weight:700">1,206</div><div style="font-size:9.5px;font-weight:600;letter-spacing:.05em;opacity:.7;margin-top:1px">PROFILE VISITS</div></div>
+          <span style="opacity:.5">&#8594;</span>
+          <div style="flex:1"><div style="font-size:17px;font-weight:700;color:#8FE0AC">96</div><div style="font-size:9.5px;font-weight:600;letter-spacing:.05em;opacity:.7;margin-top:1px">CONVERSIONS</div></div>
+        </div>
+      </div>
+      <div style="padding:14px 16px;font-size:11.5px;color:#9CA3AF">Conversion = follow, appointment booking, or clinic contact within 7 days of the visit.</div>
+    </div>
+  `,
+
+  '1e': () => `
+    ${backHeader('Link performance', '1a')}
+    <div style="padding:18px 16px;border-bottom:1px solid #EDEDED;background:#F7F8F5">
+      <div style="font-size:11px;font-weight:600;letter-spacing:.07em;color:#6B7280">ALL LINKS &middot; LAST 30 DAYS</div>
+      <div style="display:flex;align-items:center;gap:10px;margin-top:12px">
+        <div style="flex:1"><div style="font-size:22px;font-weight:700;color:#171717">4,910</div><div style="font-size:10px;font-weight:600;letter-spacing:.05em;color:#9CA3AF">CLICKS</div></div>
+        <span style="color:#C9CDC4">&#8594;</span>
+        <div style="flex:1"><div style="font-size:22px;font-weight:700;color:#171717">3,104</div><div style="font-size:10px;font-weight:600;letter-spacing:.05em;color:#9CA3AF">VISITS</div></div>
+        <span style="color:#C9CDC4">&#8594;</span>
+        <div style="flex:1"><div style="font-size:22px;font-weight:700;color:#159A4B">214</div><div style="font-size:10px;font-weight:600;letter-spacing:.05em;color:#9CA3AF">CONVERSIONS</div></div>
+      </div>
+    </div>
+    <div style="padding:12px 16px 4px;font-size:11px;font-weight:600;letter-spacing:.07em;color:#6B7280">BY PLATFORM</div>
+    <div style="padding:0 16px 12px;display:flex;gap:7px;overflow:hidden;border-bottom:1px solid #EDEDED">
+      ${[{ name: 'YouTube', clicks: '2,588', nav: '1i' }, { name: 'Instagram', clicks: '1,410', nav: null }, { name: 'LinkedIn', clicks: '912', nav: null }].map(c =>
+        `<div ${c.nav ? `data-nav="${c.nav}"` : ''} style="flex:none;display:flex;align-items:center;gap:5px;padding:8px 10px;border:1px solid #E5E7EB;border-radius:999px;background:#fff;white-space:nowrap"><span style="font-size:12.5px;font-weight:600;color:#171717">${c.name}</span><span style="font-size:12px;color:#6B7280">${c.clicks}</span><span style="font-size:12px;color:#9CA3AF">&#8250;</span></div>`
+      ).join('')}
+    </div>
+    <div style="padding:12px 16px 4px;font-size:11px;font-weight:600;letter-spacing:.07em;color:#6B7280">EVERY LINK</div>
+    ${[
+      { platform: 'YouTube', badge: BADGE.YouTube, slug: '/p/meera-pcos1', post: 'PCOS Insulin Resistance Explained', rate: '5.2%', flow: '1,842 → 1,206 → 96', bar: 'width:100%;height:100%;background:#159A4B' },
+      { platform: 'Instagram', badge: BADGE.Instagram, slug: '/p/meera-hba1c', post: 'Reversing an HbA1c of 6.8 without aggressive medication', rate: '2.9%', flow: '1,410 → 622 → 41', bar: 'width:76%;height:100%;background:#159A4B' },
+      { platform: 'LinkedIn', badge: BADGE.LinkedIn, slug: '/p/meera-cgm', post: 'What continuous glucose monitoring shows', rate: '1.8%', flow: '912 → 488 → 17', bar: 'width:49%;height:100%;background:#7BC49A' },
+      { platform: 'YouTube', badge: BADGE.YouTube, slug: '/bio/meera', post: 'Channel bio link (all videos)', rate: '1.1%', flow: '746 → 788 → 8', bar: 'width:40%;height:100%;background:#7BC49A' }
+    ].map(l => `
+      <div style="padding:15px 16px;border-bottom:1px solid #F3F4F6">
+        <div style="display:flex;align-items:center;gap:7px;min-width:0"><span style="${l.badge}">${l.platform}</span><span style="font-size:11.5px;font-family:ui-monospace,Menlo,monospace;color:#6B7280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0">${l.slug}</span><span style="margin-left:auto;font-size:12px;font-weight:700;color:#159A4B">${l.rate}</span></div>
+        <div style="font-size:12.5px;color:#171717;margin-top:7px;line-height:1.4">${escapeHtml(l.post)}</div>
+        <div style="display:flex;align-items:center;gap:6px;margin-top:10px"><div style="flex:1;height:6px;border-radius:3px;background:#EDEDED;overflow:hidden"><div style="${l.bar}"></div></div><span style="font-size:11.5px;color:#6B7280;width:118px;text-align:right">${l.flow}</span></div>
+      </div>
+    `).join('')}
+    <div style="padding:15px 16px;background:#F0FAF3;border-bottom:1px solid #EDEDED">
+      <div style="font-size:11px;font-weight:600;letter-spacing:.07em;color:#1F5B3A">&#8599; THE OTHER DIRECTION &middot; NINTO &#8594; PLATFORM</div>
+      <div style="font-size:11.5px;color:#4B5563;margin-top:5px;line-height:1.5">Clicks Ninto sent to your posts at source, from feed cards and your profile.</div>
+      <div style="display:flex;gap:16px;margin-top:11px">${[{ clicks: '3,120', label: 'TO YOUTUBE' }, { clicks: '1,840', label: 'TO INSTAGRAM' }, { clicks: '1,280', label: 'OTHER' }].map(o => `<div><div style="font-size:16px;font-weight:700;color:#159A4B">${o.clicks}</div><div style="font-size:10px;font-weight:600;letter-spacing:.05em;color:#6B7280;margin-top:1px">${o.label}</div></div>`).join('')}</div>
+    </div>
+    <div style="padding:14px 16px;font-size:11.5px;color:#9CA3AF">Sorted by conversion rate. Bio links are counted separately from per-post links.</div>
+  `,
+
+  '1i': () => `
+    <div style="padding:14px 16px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #EDEDED"><span data-nav="1e" style="font-size:17px;color:#159A4B">&#8592;</span><span style="font-size:16px;font-weight:600;color:#171717">YouTube links</span><span style="margin-left:auto;font-size:17px;color:#9CA3AF">&#8942;</span></div>
+    <div style="padding:16px;display:flex;gap:12px;align-items:center;background:#114F3C;color:#fff">
+      <div style="width:42px;height:42px;border-radius:11px;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700">YT</div>
+      <div style="flex:1"><div style="font-size:15px;font-weight:700">@drmeeranair</div><div style="font-size:11.5px;opacity:.75;margin-top:2px">24.6K subscribers &middot; 31 synced posts</div></div>
+      <div style="text-align:right"><div style="font-size:18px;font-weight:700">2,588</div><div style="font-size:9.5px;font-weight:600;letter-spacing:.05em;opacity:.7">CLICKS IN</div></div>
+    </div>
+    <div style="padding:16px 16px 8px;display:flex;align-items:baseline;gap:8px"><span style="font-size:11px;font-weight:600;letter-spacing:.07em;color:#6B7280">CUSTOM LINK</span><span style="font-size:11px;color:#9CA3AF">You create and place these</span></div>
+    <div style="margin:0 16px 6px;border:1px solid #D6EEDF;border-radius:12px;background:#F0FAF3;padding:13px 14px">
+      <div style="display:flex;align-items:center;gap:10px"><span style="flex:1;font-size:13px;font-weight:600;font-family:ui-monospace,Menlo,monospace;color:#114F3C;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">ninto.in/dr-meera-yt</span><button type="button" style="flex:none;padding:6px 12px;border-radius:999px;border:none;background:#159A4B;color:#fff;font-family:inherit;font-size:11.5px;font-weight:600;cursor:pointer">Copy</button></div>
+      <div style="font-size:11.5px;color:#1F5B3A;margin-top:8px">Placed in channel bio &middot; verified 2 Apr</div>
+      <div style="display:flex;align-items:center;gap:6px;margin-top:12px;padding-top:11px;border-top:1px solid #D6EEDF">
+        <div style="flex:1"><div style="font-size:16px;font-weight:700;color:#171717">746</div><div style="font-size:9.5px;font-weight:600;letter-spacing:.05em;color:#6B7280">CLICKS</div></div>
+        <span style="color:#9DC7AF">&#8594;</span>
+        <div style="flex:1"><div style="font-size:16px;font-weight:700;color:#171717">788</div><div style="font-size:9.5px;font-weight:600;letter-spacing:.05em;color:#6B7280">VISITS</div></div>
+        <span style="color:#9DC7AF">&#8594;</span>
+        <div style="flex:1"><div style="font-size:16px;font-weight:700;color:#159A4B">8</div><div style="font-size:9.5px;font-weight:600;letter-spacing:.05em;color:#6B7280">CONVERSIONS</div></div>
+      </div>
+    </div>
+    <div style="padding:6px 16px 14px"><button type="button" style="width:100%;padding:11px;border-radius:999px;border:1px dashed #159A4B;background:#fff;color:#159A4B;font-family:inherit;font-size:12.5px;font-weight:600;cursor:pointer">+ New custom link for YouTube</button><div style="font-size:11px;color:#9CA3AF;text-align:center;margin-top:8px">For pinned comments, community posts, end screens</div></div>
+    <div style="height:1px;background:#EDEDED"></div>
+    <div style="padding:14px 16px 8px;display:flex;align-items:baseline;gap:8px"><span style="font-size:11px;font-weight:600;letter-spacing:.07em;color:#6B7280">AUTO-GENERATED</span><span style="font-size:11px;color:#9CA3AF">One per synced video</span></div>
+    <div style="flex:1;overflow:hidden">
+      ${[
+        { post: 'PCOS Insulin Resistance Explained', slug: 'ninto.in/p/meera-pcos1', dur: '3:24', clicks: '1,842', conv: '96 conv.' },
+        { post: 'Thyroid medication timing, explained', slug: 'ninto.in/p/meera-thy2', dur: '5:02', clicks: '486', conv: '21 conv.' },
+        { post: 'What a fasting test misses', slug: 'ninto.in/p/meera-cgm3', dur: '7:41', clicks: '198', conv: '6 conv.' },
+        { post: 'PCOS: the first appointment', slug: 'ninto.in/p/meera-pcos4', dur: '4:16', clicks: '62', conv: '2 conv.' }
+      ].map(l => `<div style="padding:12px 16px;border-bottom:1px solid #F3F4F6;display:flex;gap:12px;align-items:center"><div style="width:56px;height:38px;border-radius:7px;flex:none;background:#2A2A2A;color:#fff;font-size:9px;font-weight:600;display:flex;align-items:flex-end;padding:4px;box-sizing:border-box">${l.dur}</div><div style="flex:1;min-width:0"><div style="font-size:12.5px;font-weight:500;color:#171717;line-height:1.35">${escapeHtml(l.post)}</div><div style="font-size:11px;font-family:ui-monospace,Menlo,monospace;color:#9CA3AF;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${l.slug}</div></div><div style="text-align:right;flex:none"><div style="font-size:13.5px;font-weight:700;color:#171717">${l.clicks}</div><div style="font-size:9.5px;font-weight:600;letter-spacing:.05em;color:#9CA3AF">CLICKS</div><div style="font-size:11px;font-weight:600;color:#159A4B;margin-top:4px">${l.conv}</div></div></div>`).join('')}
+    </div>
+  `,
+
+  '1f': () => `
+    ${backHeader('Revenue', '1a')}
+    <div style="padding:20px 16px 18px;border-bottom:1px solid #EDEDED">
+      <div style="font-size:10.5px;font-weight:600;letter-spacing:.08em;color:#6B7280">ATTRIBUTED TO CONTENT &middot; LAST 30 DAYS</div>
+      <div style="display:flex;align-items:baseline;gap:10px;margin-top:6px"><span style="font-size:36px;font-weight:700;color:#171717;letter-spacing:-.02em">&#8377;1,84,500</span></div>
+      <div style="display:flex;gap:22px;margin-top:14px">
+        <div><div style="font-size:18px;font-weight:700;color:#171717">123</div><div style="font-size:10px;font-weight:600;letter-spacing:.05em;color:#9CA3AF;margin-top:2px">BOOKINGS</div></div>
+        <div><div style="font-size:18px;font-weight:700;color:#171717">&#8377;1,500</div><div style="font-size:10px;font-weight:600;letter-spacing:.05em;color:#9CA3AF;margin-top:2px">AVG FEE</div></div>
+        <div><div style="font-size:18px;font-weight:700;color:#159A4B">57%</div><div style="font-size:10px;font-weight:600;letter-spacing:.05em;color:#9CA3AF;margin-top:2px">FROM CONTENT</div></div>
+      </div>
+    </div>
+    <div style="padding:16px 16px 8px;font-size:11px;font-weight:600;letter-spacing:.07em;color:#6B7280">WHAT DROVE THE BOOKINGS</div>
+    ${[
+      { n: '1', post: 'PCOS Insulin Resistance Explained', platform: 'YouTube', badge: BADGE.YouTube, slug: '/p/meera-pcos1', amount: '₹72,000', count: '48 bookings' },
+      { n: '2', post: 'The lab panel I actually order before a PCOS diagnosis', platform: 'Ninto', badge: BADGE.Ninto, slug: 'native post', amount: '₹42,000', count: '28 bookings' },
+      { n: '3', post: 'Reversing an HbA1c of 6.8 without aggressive medication', platform: 'Instagram', badge: BADGE.Instagram, slug: '/p/meera-hba1c', amount: '₹31,500', count: '21 bookings' },
+      { n: '4', post: 'Why your thyroid numbers can be "normal"', platform: 'Ninto', badge: BADGE.Ninto, slug: 'native post', amount: '₹24,000', count: '16 bookings' }
+    ].map(r => `<div style="padding:13px 16px;border-bottom:1px solid #F3F4F6;display:flex;gap:12px;align-items:center"><div style="width:34px;height:34px;border-radius:9px;background:#ECEDE7;display:flex;align-items:center;justify-content:center;font-size:12.5px;font-weight:700;color:#114F3C">${r.n}</div><div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:500;color:#171717;line-height:1.4">${escapeHtml(r.post)}</div><div style="display:flex;align-items:center;gap:6px;margin-top:6px"><span style="${r.badge}">${r.platform}</span><span style="font-size:11px;font-family:ui-monospace,Menlo,monospace;color:#9CA3AF">${r.slug}</span></div></div><div style="text-align:right"><div style="font-size:14px;font-weight:700;color:#171717">${r.amount}</div><div style="font-size:10.5px;color:#9CA3AF;margin-top:2px">${r.count}</div></div></div>`).join('')}
+    <div style="padding:16px"><div style="padding:13px 14px;border-radius:12px;background:#F0FAF3;border:1px solid #D6EEDF;font-size:12.5px;color:#1F5B3A;line-height:1.5">Your YouTube links convert at 4.4% but carry only a quarter of the clicks. Adding the link to pinned comments is the fastest lever.</div></div>
+  `,
+
+  '1g': (v) => `
+    ${backHeader('Top performing', '1a')}
+    <div style="padding:12px 16px;border-bottom:1px solid #EDEDED"><div style="display:flex;gap:6px;background:#F1F2EE;padding:3px;border-radius:999px">${['Conversions', 'Views', 'Revenue'].map(l => `<button type="button" data-sort="${l}" style="${segStyle(analyticsState.sort===l)}">${l}</button>`).join('')}</div><div style="font-size:11.5px;color:#9CA3AF;margin-top:9px">${v.sortNote}</div></div>
+    ${v.topRanked.map(t => `
+      <div style="padding:14px 16px;border-bottom:1px solid #F3F4F6;display:flex;gap:12px;align-items:flex-start">
+        <div style="width:22px;font-size:15px;font-weight:700;color:#C9CDC4;padding-top:2px">${t.rank}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:500;color:#171717;line-height:1.4">${escapeHtml(t.title)}</div>
+          <div style="display:flex;align-items:center;gap:6px;margin-top:7px"><span style="${t.badge}">${t.source}</span><span style="font-size:11px;color:#9CA3AF">${t.date}</span></div>
+          <div style="display:flex;gap:6px;margin-top:9px;overflow:hidden">${t.tags.map(tag => `<span style="font-size:10.5px;font-weight:600;padding:3px 8px;border-radius:6px;background:#E4F2E4;color:#1F5B3A;white-space:nowrap;flex:none">${tag}</span>`).join('')}</div>
+        </div>
+        <div style="text-align:right"><div style="font-size:17px;font-weight:700;color:#159A4B">${t.primary}</div><div style="font-size:9.5px;font-weight:600;letter-spacing:.05em;color:#9CA3AF">${t.primaryLabel}</div><div style="font-size:11px;color:#9CA3AF;margin-top:7px">${t.secondary}</div></div>
+      </div>
+    `).join('')}
+  `
+};
+
+
+const ON = '#17A34A', OFF = '#D6DAD6';
+
+const PUBLISH_SCREEN_ORDER = ['1a','1b','1c','1e','1f','1g','1h','1i','1j','1k','1l','1m','1n'];
+const PUBLISH_SCREEN_LABEL = {
+  '1a':'1a Compose','1b':'1b Also post to','1c':'1c Connect first','1e':'1e Customize',
+  '1f':'1f Preview','1g':'1g Publishing','1h':'1h Results','1i':'1i Cross-posted','1j':'1j Manage post',
+  '1k':'1k Manage platforms','1l':'1l Add platform','1m':'1m Manage platform','1n':'1n Disconnect'
+};
+
+const publishState = {
+  screen: '1a',
+  ig: true, li: true, fb: false, x: false,
+  tab: 'base',
+  pmView: true, pmPost: true, pmDef: false,
+  dc: 'keep',
+  connectTarget: 'x'
+};
+
+function toggleHtml(dataKey, on) {
+  return `<div class="toggle" data-toggle="${dataKey}" style="background:${on ? ON : OFF};justify-content:${on ? 'flex-end' : 'flex-start'}"><div class="toggle-knob"></div></div>`;
+}
+
+const BASE_CAPTION = 'Three markers I check before calling a thyroid panel “normal”. Ranges are population averages, not your baseline — symptoms belong in the reading.';
+const TAB_COPY = {
+  base: { label: 'Ninto (base)', caption: BASE_CAPTION, edited: 'Base post', chars: '168 characters', media: '1 image · shown as posted on Ninto', showTitle: false },
+  ig: { label: 'Instagram', caption: 'Three markers I check before calling a thyroid panel “normal”. Ranges are averages, not your baseline. #thyroid #endocrinology', edited: 'Edited for Instagram', chars: '126 / 2,200', media: '1 image · cropped to 4:5 for feed', showTitle: false },
+  li: { label: 'LinkedIn', caption: BASE_CAPTION + ' Full breakdown in the comments.', edited: 'Edited for LinkedIn', chars: '201 / 3,000', media: '1 image · 1200×627', showTitle: false },
+  yt: { label: 'YouTube', caption: BASE_CAPTION, edited: 'Pre-filled from base', chars: '168 / 5,000', media: 'Video required · thumbnail auto-picked', showTitle: true }
+};
+
+function header(back, title, right, backNav, rightNav) {
+  return `<div style="height:52px;background:#0C5C3D;display:flex;align-items:center;justify-content:space-between;padding:0 16px;flex:none">
+    <span ${backNav ? `data-nav="${backNav}"` : ''} style="color:rgba(255,255,255,.85);font-size:14px;min-width:34px">${back || ''}</span>
+    <span style="color:#fff;font-size:15px;font-weight:600">${title}</span>
+    <span ${rightNav ? `data-nav="${rightNav}"` : ''} style="color:#fff;font-size:14px;font-weight:600;min-width:34px;text-align:right">${right || ''}</span>
+  </div>`;
+}
+
+const PUBLISH_SCREENS = {
+  '1a': () => `
+    ${header('Cancel', 'New post', 'Next', null, '1b')}
+    <div style="flex:1;overflow:hidden;display:flex;flex-direction:column">
+      <div style="display:flex;gap:10px;padding:13px 16px 12px;align-items:center;border-bottom:1px solid #F1F2F0">
+        <div style="width:34px;height:34px;border-radius:50%;background:#DCF0E3;color:#16653C;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center">MN</div>
+        <div style="flex:1"><div style="font-size:13.5px;font-weight:600;color:#1B1F1D">Dr. Meera Nair</div><div style="font-size:11px;color:#6B7570">Endocrinologist &middot; Chennai</div></div>
+        <span style="font-size:11.5px;color:#17A34A;font-weight:600">Save draft</span>
+      </div>
+      <div style="flex:1;overflow:hidden;padding:13px 16px 0">
+        <div style="font-size:11px;font-weight:700;color:#6B7570;letter-spacing:.04em;margin-bottom:6px">TITLE <span style="font-weight:400;text-transform:none;letter-spacing:0">&middot; used by YouTube, LinkedIn articles</span></div>
+        <div style="border:1px solid #DDE0DC;border-radius:9px;padding:10px 12px;font-size:13.5px;color:#1B1F1D">Thyroid panels: what &ldquo;normal&rdquo; misses</div>
+        <div style="font-size:11px;font-weight:700;color:#6B7570;letter-spacing:.04em;margin:14px 0 6px">CAPTION</div>
+        <div style="border:1px solid #DDE0DC;border-radius:9px;padding:11px 12px;font-size:13.5px;line-height:1.5;color:#1B1F1D">${BASE_CAPTION}</div>
+        <div style="font-size:11px;font-weight:700;color:#6B7570;letter-spacing:.04em;margin:14px 0 6px">MEDIA</div>
+        <div style="display:flex;gap:9px;align-items:center">
+          <div style="width:62px;height:62px;border-radius:9px;background:#E9EAE6;border:1px solid #E6E8E6;display:flex;align-items:center;justify-content:center;font-size:9px;color:#8A938D">IMAGE</div>
+          <div style="width:62px;height:62px;border-radius:9px;border:1px dashed #CFD4CF;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;color:#6B7570;font-size:9.5px"><span style="font-size:15px;line-height:1">+</span>Video</div>
+          <div style="flex:1;font-size:11px;color:#6B7570;line-height:1.45">1 image &middot; 1200&times;900<div style="color:#B4772A;margin-top:3px">Add a video to unlock YouTube</div></div>
+        </div>
+        <div style="font-size:11px;font-weight:700;color:#6B7570;letter-spacing:.04em;margin:14px 0 6px">HASHTAGS &amp; TOPICS</div>
+        <div style="display:flex;gap:7px;flex-wrap:wrap">
+          <span style="background:#DCF0E3;color:#16653C;font-size:11.5px;padding:5px 10px;border-radius:6px">#thyroid</span>
+          <span style="background:#DCF0E3;color:#16653C;font-size:11.5px;padding:5px 10px;border-radius:6px">#endocrinology</span>
+          <span style="background:#DCF0E3;color:#16653C;font-size:11.5px;padding:5px 10px;border-radius:6px">Care seeker education</span>
+          <span style="border:1px dashed #CFD4CF;color:#6B7570;font-size:11.5px;padding:5px 10px;border-radius:6px">+ Add</span>
+        </div>
+        <div style="margin-top:16px;padding:12px 13px;background:#F4FBF6;border:1px solid #CDE9D8;border-radius:10px">
+          <div style="font-size:11.5px;font-weight:700;color:#16653C;margin-bottom:7px">READY FOR 3 PLATFORMS</div>
+          <div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center">
+            <span style="background:#DCF0E3;color:#16653C;font-size:11px;padding:4px 9px;border-radius:6px">Ninto</span>
+            <span style="background:#DCF0E3;color:#16653C;font-size:11px;padding:4px 9px;border-radius:6px">Instagram</span>
+            <span style="background:#DCF0E3;color:#16653C;font-size:11px;padding:4px 9px;border-radius:6px">LinkedIn</span>
+            <span style="background:#F3F4F2;color:#8A938D;font-size:11px;padding:4px 9px;border-radius:6px">YouTube &middot; needs video</span>
+          </div>
+          <div style="font-size:11px;color:#6B7570;line-height:1.5;margin-top:8px">These will be switched on for you on the next step.</div>
+        </div>
+      </div>
+      <div style="border-top:1px solid #E6E8E6;display:flex;gap:20px;padding:12px 16px;color:#6B7570;font-size:12px;flex:none">
+        <span>Photo</span><span>Video</span><span>Document</span><span>Poll</span>
+      </div>
+    </div>
+  `,
+
+  '1b': () => `
+    ${header('Back', 'New post', 'Next', '1a', null)}
+    <div style="flex:1;overflow:hidden">
+      <div style="padding:14px 16px;border-bottom:1px solid #E6E8E6;display:flex;gap:12px">
+        <div style="width:52px;height:52px;border-radius:8px;background:#E9EAE6;flex:none"></div>
+        <div style="font-size:12.5px;line-height:1.45;color:#6B7570;overflow:hidden">${BASE_CAPTION.slice(0, 70)}&hellip;</div>
+      </div>
+      <div style="padding:18px 16px 6px;font-size:13px;font-weight:700;color:#1B1F1D">Also post to:</div>
+      <div style="padding:0 16px 10px;font-size:11.5px;color:#6B7570;line-height:1.45">Switched on automatically based on what you filled in -- a caption and an image fit both connected platforms. Turn any off.</div>
+
+      <div style="display:flex;align-items:center;gap:12px;padding:13px 16px;border-top:1px solid #F1F2F0">
+        <div style="width:34px;height:34px;border-radius:8px;background:#F3E7EE;color:#A03A6B;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center">IG</div>
+        <div style="flex:1"><div style="font-size:14px;color:#1B1F1D;font-weight:600">Instagram</div><div style="font-size:11px;color:#6B7570">@drmeeranair &middot; connected</div></div>
+        ${toggleHtml('ig', publishState.ig)}
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;padding:13px 16px;border-top:1px solid #F1F2F0">
+        <div style="width:34px;height:34px;border-radius:8px;background:#E4ECFA;color:#2B5FA8;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center">in</div>
+        <div style="flex:1"><div style="font-size:14px;color:#1B1F1D;font-weight:600">LinkedIn</div><div style="font-size:11px;color:#6B7570">Dr. Meera Nair &middot; connected</div></div>
+        ${toggleHtml('li', publishState.li)}
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;padding:13px 16px;border-top:1px solid #F1F2F0">
+        <div style="width:34px;height:34px;border-radius:8px;background:#E4EAF6;color:#3B5998;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center">f</div>
+        <div style="flex:1"><div style="font-size:14px;color:#1B1F1D;font-weight:600">Facebook Page</div><div style="font-size:11px;color:#6B7570">Not connected</div></div>
+        <div class="toggle" data-connect="fb" style="background:${OFF};justify-content:flex-start"><div class="toggle-knob"></div></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;padding:13px 16px;border-top:1px solid #F1F2F0">
+        <div style="width:34px;height:34px;border-radius:8px;background:#EDEDED;color:#4A4A4A;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center">X</div>
+        <div style="flex:1"><div style="font-size:14px;color:#1B1F1D;font-weight:600">X</div><div style="font-size:11px;color:#6B7570">Not connected</div></div>
+        <div class="toggle" data-connect="x" style="background:${OFF};justify-content:flex-start"><div class="toggle-knob"></div></div>
+      </div>
+
+      <div style="margin:20px 16px 0;padding:12px 14px;background:#F7F7F5;border:1px solid #E6E8E6;border-radius:10px">
+        <div style="font-size:12px;font-weight:600;color:#1B1F1D;margin-bottom:4px">Hidden for this post</div>
+        <div style="font-size:11.5px;line-height:1.5;color:#6B7570">YouTube needs a video. Add one in the composer and it appears here, already switched on.</div>
+      </div>
+      <div style="padding:16px">
+        <div data-nav="1e" style="height:46px;border-radius:23px;background:#17A34A;color:#fff;font-size:15px;font-weight:600;display:flex;align-items:center;justify-content:center">Continue</div>
+      </div>
+    </div>
+  `,
+
+  '1c': () => `
+    <div style="height:52px;background:#0C5C3D;flex:none"></div>
+    <div style="flex:1;position:relative;background:#fff">
+      <div style="padding:18px 16px 0;opacity:.35;pointer-events:none">
+        <div style="font-size:13px;font-weight:700;color:#1B1F1D">Also post to:</div>
+        <div style="margin-top:14px;height:56px;border-top:1px solid #F1F2F0"></div>
+        <div style="height:56px;border-top:1px solid #F1F2F0"></div>
+        <div style="height:56px;border-top:1px solid #F1F2F0"></div>
+      </div>
+      <div style="position:absolute;inset:0;background:rgba(20,26,22,.42)"></div>
+      <div style="position:absolute;left:0;right:0;bottom:0;background:#fff;border-radius:18px 18px 0 0;padding:20px 18px 22px">
+        <div style="width:38px;height:4px;border-radius:2px;background:#DDE0DC;margin:0 auto 18px"></div>
+        <div style="width:44px;height:44px;border-radius:11px;background:#EDEDED;color:#4A4A4A;font-size:14px;font-weight:700;display:flex;align-items:center;justify-content:center;margin-bottom:14px">${publishState.connectTarget === 'fb' ? 'f' : 'X'}</div>
+        <div style="font-size:18px;font-weight:700;color:#1B1F1D;line-height:1.3">Connect ${publishState.connectTarget === 'fb' ? 'Facebook Page' : 'X'} to post from Ninto</div>
+        <div style="font-size:13px;line-height:1.55;color:#6B7570;margin-top:8px">You'll sign in once. Ninto will then be able to publish posts you select &mdash; nothing is posted without you tapping Post.</div>
+        <div style="margin-top:16px;padding:12px 14px;background:#F7F7F5;border-radius:10px;display:flex;flex-direction:column;gap:8px">
+          <div style="font-size:12px;color:#1B1F1D">Ninto will ask for: <span style="font-weight:600">create posts</span></div>
+          <div style="font-size:12px;color:#6B7570">It will not read your DMs or follower data.</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px;margin-top:18px">
+          <div data-connectconfirm="${publishState.connectTarget}" style="height:46px;border-radius:23px;background:#17A34A;color:#fff;font-size:15px;font-weight:600;display:flex;align-items:center;justify-content:center">Connect ${publishState.connectTarget === 'fb' ? 'Facebook' : 'X'}</div>
+          <div data-nav="1b" style="height:46px;border-radius:23px;border:1px solid #DDE0DC;color:#1B1F1D;font-size:15px;font-weight:600;display:flex;align-items:center;justify-content:center">Not now</div>
+        </div>
+      </div>
+    </div>
+  `,
+
+  '1e': () => {
+    const copy = TAB_COPY[publishState.tab];
+    return `
+    ${header('Back', 'Customize per platform', 'Next', '1b', '1f')}
+    <div style="display:flex;gap:8px;padding:12px 16px;border-bottom:1px solid #E6E8E6;flex:none;overflow:hidden">
+      ${['base','ig','li','yt'].map(k => `<div data-tab="${k}" style="font-size:12.5px;padding:7px 12px;border-radius:16px;cursor:pointer;white-space:nowrap;background:${publishState.tab===k?'#0C5C3D':'#F3F4F2'};color:${publishState.tab===k?'#fff':'#6B7570'}">${TAB_COPY[k].label}</div>`).join('')}
+    </div>
+    <div style="flex:1;overflow:hidden;padding:16px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+        <span style="flex:1;font-size:11px;color:#6B7570">From base post</span>
+        <span style="font-size:11px;color:#17A34A;font-weight:600;white-space:nowrap">Reset to base</span>
+      </div>
+      ${copy.showTitle ? `<div style="margin-bottom:14px"><div style="font-size:11.5px;font-weight:600;color:#1B1F1D;margin-bottom:6px">Title <span style="color:#B4772A;font-weight:400">&middot; YouTube only</span></div><div style="border:1px solid #DDE0DC;border-radius:9px;padding:11px 12px;font-size:13.5px;color:#1B1F1D">Thyroid panels: what &ldquo;normal&rdquo; misses</div></div>` : ''}
+      <div style="font-size:11.5px;font-weight:600;color:#1B1F1D;margin-bottom:6px">Caption</div>
+      <div style="border:1px solid #DDE0DC;border-radius:9px;padding:12px;font-size:13.5px;line-height:1.55;color:#1B1F1D;min-height:112px">${copy.caption}</div>
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:#6B7570;margin-top:6px"><span>${copy.edited}</span><span>${copy.chars}</span></div>
+      <div style="font-size:11.5px;font-weight:600;color:#1B1F1D;margin:16px 0 6px">Media</div>
+      <div style="display:flex;gap:10px;align-items:center">
+        <div style="width:74px;height:74px;border-radius:9px;background:#E9EAE6;border:1px solid #E6E8E6"></div>
+        <div style="font-size:11.5px;color:#6B7570;line-height:1.5">${copy.media}<div style="color:#17A34A;font-weight:600;margin-top:5px">Change media for this platform</div></div>
+      </div>
+      <div style="font-size:11.5px;font-weight:600;color:#1B1F1D;margin:16px 0 6px">Hashtags</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <span style="background:#DCF0E3;color:#16653C;font-size:11.5px;padding:5px 10px;border-radius:6px">#thyroid</span>
+        <span style="background:#DCF0E3;color:#16653C;font-size:11.5px;padding:5px 10px;border-radius:6px">#endocrinology</span>
+        <span style="border:1px dashed #CFD4CF;color:#6B7570;font-size:11.5px;padding:5px 10px;border-radius:6px">+ Add</span>
+      </div>
+    </div>
+  `; },
+
+  '1f': () => `
+    ${header('Back', 'Preview', '', '1e', null)}
+    <div style="flex:1;overflow:hidden;background:#F7F7F5;padding:14px 0">
+      <div style="padding:0 16px 10px;font-size:11.5px;color:#6B7570">Swipe to compare &middot; 3 destinations</div>
+      <div style="display:flex;gap:12px;padding:0 16px 8px;align-items:flex-start;overflow-x:auto">
+        <div style="width:158px;flex:none;background:#fff;border:1px solid #E6E8E6;border-radius:12px;overflow:hidden">
+          <div style="padding:9px 12px;background:#0C5C3D;color:#fff;font-size:11.5px;font-weight:600">Ninto</div>
+          <div style="padding:11px 12px">
+            <div style="display:flex;gap:8px;align-items:center"><div style="width:26px;height:26px;border-radius:50%;background:#DCF0E3;color:#16653C;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center">MN</div><div><div style="font-size:11px;font-weight:600;color:#1B1F1D">Dr. Meera Nair</div><div style="font-size:9.5px;color:#6B7570">Endocrinologist &middot; now</div></div></div>
+            <div style="font-size:11px;line-height:1.5;color:#1B1F1D;margin-top:9px">${BASE_CAPTION.slice(0,90)}&hellip;</div>
+            <div style="height:104px;border-radius:8px;background:#E9EAE6;margin-top:9px"></div>
+          </div>
+        </div>
+        <div style="width:158px;flex:none;background:#fff;border:1px solid #E6E8E6;border-radius:12px;overflow:hidden">
+          <div style="padding:9px 12px;background:#F3E7EE;color:#A03A6B;font-size:11.5px;font-weight:600">Instagram</div>
+          <div style="padding:11px 12px">
+            <div style="display:flex;gap:8px;align-items:center"><div style="width:26px;height:26px;border-radius:50%;background:#F3E7EE"></div><div style="font-size:11px;font-weight:600;color:#1B1F1D">drmeeranair</div></div>
+            <div style="height:150px;border-radius:6px;background:#E9EAE6;margin-top:9px"></div>
+          </div>
+        </div>
+        <div style="width:158px;flex:none;background:#fff;border:1px solid #E6E8E6;border-radius:12px;overflow:hidden">
+          <div style="padding:9px 12px;background:#E4ECFA;color:#2B5FA8;font-size:11.5px;font-weight:600">LinkedIn</div>
+          <div style="padding:11px 12px"><div style="font-size:11px;color:#1B1F1D">Dr. Meera Nair &middot; Endocrinologist</div><div style="height:96px;border-radius:6px;background:#E9EAE6;margin-top:9px"></div></div>
+        </div>
+      </div>
+      <div style="margin:16px 16px 0;padding:12px 14px;background:#fff;border:1px solid #E6E8E6;border-radius:10px;font-size:11.5px;color:#6B7570;line-height:1.5">Instagram caption was shortened for this platform. <span style="color:#17A34A;font-weight:600">Edit</span></div>
+    </div>
+    <div style="padding:14px 16px;border-top:1px solid #E6E8E6;background:#fff;flex:none">
+      <div data-nav="1g" style="height:48px;border-radius:24px;background:#17A34A;color:#fff;font-size:15.5px;font-weight:600;display:flex;align-items:center;justify-content:center">Post to Ninto + 2 platforms</div>
+    </div>
+  `,
+
+  '1g': () => `
+    <div style="height:52px;background:#0C5C3D;display:flex;align-items:center;justify-content:center;flex:none"><span style="color:#fff;font-size:15px;font-weight:600">Posting</span></div>
+    <div style="flex:1;background:#fff;padding:18px 16px;position:relative">
+      <div style="font-size:13px;color:#6B7570;margin-bottom:16px">Your post is live on Ninto. Pushing to platforms.</div>
+      <div style="border:1px solid #E6E8E6;border-radius:12px;overflow:hidden">
+        <div style="display:flex;align-items:center;gap:11px;padding:14px"><div style="width:32px;height:32px;border-radius:8px;background:#DCF0E3;color:#16653C;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center">N</div><div style="flex:1;font-size:13.5px;color:#1B1F1D;font-weight:600">Ninto</div><span style="font-size:12px;color:#16653C;font-weight:600">Posted</span></div>
+        <div style="display:flex;align-items:center;gap:11px;padding:14px;border-top:1px solid #F1F2F0"><div style="width:32px;height:32px;border-radius:8px;background:#E4ECFA;color:#2B5FA8;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center">in</div><div style="flex:1;font-size:13.5px;color:#1B1F1D;font-weight:600">LinkedIn</div><span style="font-size:12px;color:#6B7570">Uploading&hellip;</span></div>
+        <div style="display:flex;align-items:center;gap:11px;padding:14px;border-top:1px solid #F1F2F0"><div style="width:32px;height:32px;border-radius:8px;background:#F3E7EE;color:#A03A6B;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center">IG</div><div style="flex:1;font-size:13.5px;color:#1B1F1D;font-weight:600">Instagram</div><span style="font-size:12px;color:#B4772A;font-weight:600">Blocked</span></div>
+      </div>
+      <div style="position:absolute;left:16px;right:16px;bottom:18px;background:#1B1F1D;border-radius:12px;padding:14px 15px;display:flex;gap:11px">
+        <div style="width:20px;height:20px;border-radius:50%;background:#B4772A;color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;flex:none">!</div>
+        <div><div style="color:#fff;font-size:13px;font-weight:600;line-height:1.4">Instagram daily posting limit reached</div><div style="color:rgba(255,255,255,.7);font-size:12px;line-height:1.45;margin-top:4px">Instagram allows 25 posts per 24 hours via connected apps. You can retry after 6:40 PM. Ninto and LinkedIn are unaffected.</div></div>
+      </div>
+    </div>
+    <div style="padding:12px 16px;flex:none;text-align:center;font-size:11px;color:#9CA3AF">Advancing automatically&hellip;</div>
+  `,
+
+  '1h': () => `
+    ${header('', 'Post results', 'Done', null, '1i')}
+    <div style="flex:1;background:#fff;padding:18px 16px">
+      <div style="font-size:19px;font-weight:700;color:#1B1F1D;line-height:1.3">Posted to Ninto and LinkedIn</div>
+      <div style="font-size:13px;color:#6B7570;margin-top:7px;line-height:1.5">One platform needs another attempt. The rest are already live.</div>
+      <div style="margin-top:18px;display:flex;flex-direction:column;gap:10px">
+        <div style="border:1px solid #E6E8E6;border-radius:12px;padding:14px;display:flex;align-items:center;gap:11px">
+          <div style="width:32px;height:32px;border-radius:8px;background:#DCF0E3;color:#16653C;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center">N</div>
+          <div style="flex:1"><div style="font-size:13.5px;font-weight:600;color:#1B1F1D">Ninto</div><div style="font-size:11.5px;color:#16653C">Posted &middot; 6:12 PM</div></div>
+          <span style="font-size:12px;color:#17A34A;font-weight:600">View</span>
+        </div>
+        <div style="border:1px solid #E6E8E6;border-radius:12px;padding:14px;display:flex;align-items:center;gap:11px">
+          <div style="width:32px;height:32px;border-radius:8px;background:#E4ECFA;color:#2B5FA8;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center">in</div>
+          <div style="flex:1"><div style="font-size:13.5px;font-weight:600;color:#1B1F1D">LinkedIn</div><div style="font-size:11.5px;color:#16653C">Posted &middot; 6:12 PM</div></div>
+          <span style="font-size:12px;color:#17A34A;font-weight:600">View live &#8599;</span>
+        </div>
+        <div style="border:1px solid #F0D9BC;background:#FDF7EF;border-radius:12px;padding:14px">
+          <div style="display:flex;align-items:center;gap:11px">
+            <div style="width:32px;height:32px;border-radius:8px;background:#F3E7EE;color:#A03A6B;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center">IG</div>
+            <div style="flex:1"><div style="font-size:13.5px;font-weight:600;color:#1B1F1D">Instagram</div><div style="font-size:11.5px;color:#B4772A">Not posted &middot; daily limit reached</div></div>
+          </div>
+          <div style="font-size:12px;color:#6B7570;line-height:1.5;margin-top:10px">Retry any time after 6:40 PM. Your Instagram version of the post is saved.</div>
+          <div style="display:flex;gap:9px;margin-top:12px">
+            <div style="flex:1;height:38px;border-radius:19px;background:#17A34A;color:#fff;font-size:13px;font-weight:600;display:flex;align-items:center;justify-content:center">Retry Instagram</div>
+            <div style="flex:1;height:38px;border-radius:19px;border:1px solid #DDE0DC;color:#1B1F1D;font-size:13px;font-weight:600;display:flex;align-items:center;justify-content:center">Edit &amp; retry</div>
+          </div>
+        </div>
+      </div>
+      <div style="margin-top:18px;font-size:12px;color:#6B7570;line-height:1.5">Each platform is published independently &mdash; a failure on one never removes or delays the others.</div>
+    </div>
+  `,
+
+  '1i': () => `
+    ${header('Back', 'Cross-posted', 'Filter', '1k', null)}
+    <div style="display:flex;gap:8px;padding:12px 16px;border-bottom:1px solid #E6E8E6;flex:none">
+      <span style="font-size:12.5px;padding:7px 12px;border-radius:16px;background:#0C5C3D;color:#fff">All</span>
+      <span style="font-size:12.5px;padding:7px 12px;border-radius:16px;background:#F3F4F2;color:#6B7570">Needs attention</span>
+      <span style="font-size:12.5px;padding:7px 12px;border-radius:16px;background:#F3F4F2;color:#6B7570">Failed</span>
+    </div>
+    <div style="flex:1;overflow:hidden;background:#F7F7F5;padding:12px 12px">
+      <div data-nav="1j" style="background:#fff;border:1px solid #E6E8E6;border-radius:12px;padding:13px;margin-bottom:10px">
+        <div style="display:flex;gap:10px"><div style="width:44px;height:44px;border-radius:8px;background:#E9EAE6;flex:none"></div><div style="flex:1"><div style="font-size:13px;line-height:1.4;color:#1B1F1D;font-weight:600">Three markers I check before calling a thyroid panel &ldquo;normal&rdquo;</div><div style="font-size:11px;color:#6B7570;margin-top:3px">Today, 6:12 PM &middot; image</div></div></div>
+        <div style="display:flex;flex-direction:column;gap:7px;margin-top:11px">
+          <div style="display:flex;align-items:center;gap:8px;font-size:11.5px"><span style="width:22px;height:22px;border-radius:6px;background:#DCF0E3;color:#16653C;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center">N</span><span style="flex:1;color:#1B1F1D">Ninto</span><span style="color:#16653C">Posted</span></div>
+          <div style="display:flex;align-items:center;gap:8px;font-size:11.5px"><span style="width:22px;height:22px;border-radius:6px;background:#E4ECFA;color:#2B5FA8;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center">in</span><span style="flex:1;color:#1B1F1D">LinkedIn</span><span style="color:#17A34A;font-weight:600">View live &#8599;</span></div>
+          <div style="display:flex;align-items:center;gap:8px;font-size:11.5px"><span style="width:22px;height:22px;border-radius:6px;background:#F3E7EE;color:#A03A6B;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center">IG</span><span style="flex:1;color:#1B1F1D">Instagram</span><span style="color:#B4772A">Failed &middot; Retry</span></div>
+        </div>
+        <div style="border-top:1px solid #F1F2F0;margin-top:11px;padding-top:10px;display:flex;gap:18px;font-size:12px;color:#17A34A;font-weight:600"><span>Manage</span><span>Edit</span><span>Remove</span></div>
+      </div>
+      <div style="background:#fff;border:1px solid #E6E8E6;border-radius:12px;padding:13px;margin-bottom:10px">
+        <div style="display:flex;gap:10px"><div style="width:44px;height:44px;border-radius:8px;background:#1B1F1D;flex:none;display:flex;align-items:center;justify-content:center;color:#fff;font-size:9px">3:24</div><div style="flex:1"><div style="font-size:13px;line-height:1.4;color:#1B1F1D;font-weight:600">PCOS Insulin Resistance Explained</div><div style="font-size:11px;color:#6B7570;margin-top:3px">14 Apr 2026 &middot; video</div></div></div>
+        <div style="display:flex;flex-direction:column;gap:7px;margin-top:11px">
+          <div style="display:flex;align-items:center;gap:8px;font-size:11.5px"><span style="width:22px;height:22px;border-radius:6px;background:#DCF0E3;color:#16653C;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center">N</span><span style="flex:1;color:#1B1F1D">Ninto</span><span style="color:#16653C">Posted</span></div>
+          <div style="display:flex;align-items:center;gap:8px;font-size:11.5px"><span style="width:22px;height:22px;border-radius:6px;background:#FBE3E3;color:#C2352F;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center">YT</span><span style="flex:1;color:#1B1F1D">YouTube</span><span style="color:#17A34A;font-weight:600">View live &#8599;</span></div>
+        </div>
+      </div>
+      <div style="background:#fff;border:1px solid #E6E8E6;border-radius:12px;padding:13px">
+        <div style="display:flex;gap:10px"><div style="width:44px;height:44px;border-radius:8px;background:#E9EAE6;flex:none"></div><div style="flex:1"><div style="font-size:13px;line-height:1.4;color:#1B1F1D;font-weight:600">HbA1c of 6.8 at diagnosis is not a life sentence</div><div style="font-size:11px;color:#6B7570;margin-top:3px">2 Apr 2026 &middot; text</div></div></div>
+        <div style="display:flex;align-items:center;gap:8px;font-size:11.5px;margin-top:11px"><span style="width:22px;height:22px;border-radius:6px;background:#EDEDED;color:#4A4A4A;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center">X</span><span style="flex:1;color:#1B1F1D">X</span><span style="color:#17A34A;font-weight:600">View live &#8599;</span></div>
+      </div>
+    </div>
+  `,
+
+  '1j': () => `
+    ${header('Back', 'Manage post', '', '1i', null)}
+    <div style="flex:1;background:#fff;overflow:hidden">
+      <div style="display:flex;gap:11px;padding:15px 16px;border-bottom:1px solid #E6E8E6"><div style="width:52px;height:52px;border-radius:8px;background:#E9EAE6;flex:none"></div><div><div style="font-size:13.5px;font-weight:600;color:#1B1F1D;line-height:1.4">Three markers I check before calling a thyroid panel &ldquo;normal&rdquo;</div><div style="font-size:11px;color:#6B7570;margin-top:4px">Today, 6:12 PM &middot; 3 destinations</div></div></div>
+      <div style="padding:15px 16px 6px;font-size:12px;font-weight:700;color:#1B1F1D;letter-spacing:.02em">DESTINATIONS</div>
+      <div style="padding:0 16px;display:flex;flex-direction:column;gap:10px">
+        <div style="border:1px solid #E6E8E6;border-radius:12px;padding:13px">
+          <div style="display:flex;align-items:center;gap:10px"><div style="width:30px;height:30px;border-radius:8px;background:#DCF0E3;color:#16653C;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center">N</div><div style="flex:1"><div style="font-size:13px;font-weight:600;color:#1B1F1D">Ninto</div><div style="font-size:11px;color:#16653C">Live &middot; 84 likes &middot; 1.6K views</div></div></div>
+          <div style="display:flex;gap:16px;margin-top:11px;font-size:12px;font-weight:600;color:#17A34A"><span>Edit caption</span><span style="color:#C2352F">Remove</span></div>
+        </div>
+        <div style="border:1px solid #E6E8E6;border-radius:12px;padding:13px">
+          <div style="display:flex;align-items:center;gap:10px"><div style="width:30px;height:30px;border-radius:8px;background:#E4ECFA;color:#2B5FA8;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center">in</div><div style="flex:1"><div style="font-size:13px;font-weight:600;color:#1B1F1D">LinkedIn</div><div style="font-size:11px;color:#6B7570">Live &middot; edits sync to LinkedIn</div></div></div>
+          <div style="display:flex;gap:16px;margin-top:11px;font-size:12px;font-weight:600;color:#17A34A"><span>Edit caption</span><span>View live &#8599;</span><span style="color:#C2352F">Delete there</span></div>
+        </div>
+        <div style="border:1px solid #E6E8E6;border-radius:12px;padding:13px">
+          <div style="display:flex;align-items:center;gap:10px"><div style="width:30px;height:30px;border-radius:8px;background:#F3E7EE;color:#A03A6B;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center">IG</div><div style="flex:1"><div style="font-size:13px;font-weight:600;color:#1B1F1D">Instagram</div><div style="font-size:11px;color:#B4772A">Failed &middot; daily limit</div></div></div>
+          <div style="font-size:11.5px;color:#6B7570;line-height:1.5;margin-top:9px">Instagram does not allow editing a caption after publishing &mdash; Ninto will remove and repost instead.</div>
+          <div style="display:flex;gap:16px;margin-top:11px;font-size:12px;font-weight:600;color:#17A34A"><span>Retry</span><span style="color:#C2352F">Cancel this destination</span></div>
+        </div>
+      </div>
+      <div style="margin:18px 16px 0;padding-top:14px;border-top:1px solid #E6E8E6">
+        <div style="height:46px;border-radius:23px;border:1px solid #F0C9C7;color:#C2352F;font-size:14.5px;font-weight:600;display:flex;align-items:center;justify-content:center">Remove from all platforms</div>
+      </div>
+    </div>
+  `,
+
+  '1k': () => `
+    ${header('Back', 'Connected platforms', '', '1i', null)}
+    <div style="flex:1;overflow:hidden;background:#F7F7F5">
+      <div style="background:#fff;padding:15px 16px;border-bottom:1px solid #E6E8E6;font-size:12.5px;color:#6B7570;line-height:1.5">One connection covers both directions: Ninto shows your content from that platform on your profile, and publishes posts you send from Ninto.</div>
+      <div style="padding:15px 16px 6px;font-size:12px;font-weight:700;color:#1B1F1D;letter-spacing:.02em">CONNECTED &middot; 2</div>
+      <div style="padding:0 12px;display:flex;flex-direction:column;gap:10px">
+        <div data-nav="1m" style="background:#fff;border:1px solid #E6E8E6;border-radius:12px;padding:13px">
+          <div style="display:flex;align-items:center;gap:11px"><div style="width:32px;height:32px;border-radius:8px;background:#F3E7EE;color:#A03A6B;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center">IG</div><div style="flex:1"><div style="font-size:13.5px;font-weight:600;color:#1B1F1D">Instagram</div><div style="font-size:11px;color:#6B7570">@drmeeranair &middot; since Feb 2026</div></div><span style="font-size:12px;color:#17A34A;font-weight:600">Manage</span></div>
+          <div style="display:flex;gap:7px;margin-top:11px;flex-wrap:wrap"><span style="background:#DCF0E3;color:#16653C;font-size:10.5px;padding:4px 9px;border-radius:6px">Pull content in</span><span style="background:#DCF0E3;color:#16653C;font-size:10.5px;padding:4px 9px;border-radius:6px">Push posts out</span></div>
+        </div>
+        <div data-nav="1m" style="background:#fff;border:1px solid #E6E8E6;border-radius:12px;padding:13px">
+          <div style="display:flex;align-items:center;gap:11px"><div style="width:32px;height:32px;border-radius:8px;background:#E4ECFA;color:#2B5FA8;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center">in</div><div style="flex:1"><div style="font-size:13.5px;font-weight:600;color:#1B1F1D">LinkedIn</div><div style="font-size:11px;color:#6B7570">Dr. Meera Nair &middot; since Jan 2026</div></div><span style="font-size:12px;color:#17A34A;font-weight:600">Manage</span></div>
+          <div style="display:flex;gap:7px;margin-top:11px;flex-wrap:wrap"><span style="background:#DCF0E3;color:#16653C;font-size:10.5px;padding:4px 9px;border-radius:6px">Pull content in</span><span style="background:#DCF0E3;color:#16653C;font-size:10.5px;padding:4px 9px;border-radius:6px">Push posts out</span></div>
+        </div>
+      </div>
+      <div style="padding:18px 16px 6px;font-size:12px;font-weight:700;color:#1B1F1D;letter-spacing:.02em">AVAILABLE</div>
+      <div style="padding:0 12px 12px;display:flex;flex-direction:column;gap:8px">
+        <div data-nav="1l" style="background:#fff;border:1px solid #E6E8E6;border-radius:12px;padding:12px 13px;display:flex;align-items:center;gap:11px"><div style="width:30px;height:30px;border-radius:8px;background:#E4EAF6;color:#3B5998;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center">f</div><div style="flex:1;font-size:13.5px;color:#1B1F1D">Facebook Page</div><span style="font-size:12px;color:#17A34A;font-weight:600">Connect</span></div>
+        <div data-nav="1l" style="background:#fff;border:1px solid #E6E8E6;border-radius:12px;padding:12px 13px;display:flex;align-items:center;gap:11px"><div style="width:30px;height:30px;border-radius:8px;background:#FBE3E3;color:#C2352F;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center">YT</div><div style="flex:1;font-size:13.5px;color:#1B1F1D">YouTube</div><span style="font-size:12px;color:#17A34A;font-weight:600">Connect</span></div>
+        <div data-nav="1l" style="background:#fff;border:1px solid #E6E8E6;border-radius:12px;padding:12px 13px;display:flex;align-items:center;gap:11px"><div style="width:30px;height:30px;border-radius:8px;background:#EDEDED;color:#4A4A4A;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center">X</div><div style="flex:1;font-size:13.5px;color:#1B1F1D">X</div><span style="font-size:12px;color:#17A34A;font-weight:600">Connect</span></div>
+      </div>
+    </div>
+  `,
+
+  '1l': () => `
+    ${header('Cancel', 'Add YouTube', '', '1k', null)}
+    <div style="flex:1;background:#fff;padding:18px 16px">
+      <div style="width:44px;height:44px;border-radius:11px;background:#FBE3E3;color:#C2352F;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center">YT</div>
+      <div style="font-size:18px;font-weight:700;color:#1B1F1D;line-height:1.3;margin-top:13px">One connection, both directions</div>
+      <div style="font-size:12.5px;color:#6B7570;line-height:1.5;margin-top:7px">Connecting YouTube once covers pulling your content in and pushing posts out. Nothing is published unless you tap Post.</div>
+      <div style="margin-top:16px;display:flex;flex-direction:column;gap:10px">
+        <div style="border:1px solid #E6E8E6;border-radius:12px;padding:13px;display:flex;gap:11px"><span style="width:20px;height:20px;border-radius:50%;background:#17A34A;color:#fff;font-size:12px;display:flex;align-items:center;justify-content:center;flex:none">&#8595;</span><div><div style="font-size:13.5px;font-weight:600;color:#1B1F1D">Pull content in</div><div style="font-size:11.5px;color:#6B7570;line-height:1.5;margin-top:3px">Your public uploads appear under Posts &amp; activity on your Ninto profile.</div></div></div>
+        <div style="border:1px solid #E6E8E6;border-radius:12px;padding:13px;display:flex;gap:11px"><span style="width:20px;height:20px;border-radius:50%;background:#17A34A;color:#fff;font-size:12px;display:flex;align-items:center;justify-content:center;flex:none">&#8593;</span><div><div style="font-size:13.5px;font-weight:600;color:#1B1F1D">Push posts out</div><div style="font-size:11.5px;color:#6B7570;line-height:1.5;margin-top:3px">Uploads only the videos you select in the composer. Needs a video in the post.</div></div></div>
+      </div>
+      <div style="margin-top:16px;padding:12px 14px;background:#F7F7F5;border-radius:10px;font-size:11.5px;color:#6B7570;line-height:1.55">You'll be taken to Google to sign in. Ninto never sees your password and can be disconnected at any time.</div>
+      <div data-nav="1k" style="margin-top:18px;height:46px;border-radius:23px;background:#17A34A;color:#fff;font-size:15px;font-weight:600;display:flex;align-items:center;justify-content:center">Continue to Google</div>
+      <div style="margin-top:14px;font-size:11.5px;color:#6B7570;text-align:center">Channel: <span style="color:#1B1F1D;font-weight:600">Dr. Meera Nair &middot; Endocrine Clinic</span> will be selected after sign-in.</div>
+    </div>
+  `,
+
+  '1m': () => `
+    ${header('Back', 'Instagram', '', '1k', null)}
+    <div style="flex:1;overflow:hidden;background:#F7F7F5">
+      <div style="background:#fff;padding:15px 16px;display:flex;align-items:center;gap:11px;border-bottom:1px solid #E6E8E6">
+        <div style="width:40px;height:40px;border-radius:10px;background:#F3E7EE;color:#A03A6B;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center">IG</div>
+        <div style="flex:1"><div style="font-size:14px;font-weight:600;color:#1B1F1D">@drmeeranair</div><div style="font-size:11px;color:#16653C">Connection healthy &middot; checked 2 min ago</div></div>
+        <span style="font-size:12px;color:#17A34A;font-weight:600">Switch account</span>
+      </div>
+      <div style="padding:15px 16px 6px;font-size:12px;font-weight:700;color:#1B1F1D;letter-spacing:.02em">ACCESS</div>
+      <div style="background:#fff;border-top:1px solid #E6E8E6;border-bottom:1px solid #E6E8E6">
+        <div style="display:flex;align-items:center;gap:12px;padding:13px 16px"><div style="flex:1"><div style="font-size:13.5px;color:#1B1F1D;font-weight:600">Pull content in &amp; push posts out</div><div style="font-size:11px;color:#6B7570;margin-top:2px;line-height:1.45">Granted together when you connected. Turning this off ends the connection.</div></div>${toggleHtml('pmView', publishState.pmView)}</div>
+        <div style="display:flex;align-items:center;gap:12px;padding:13px 16px;border-top:1px solid #F1F2F0"><div style="flex:1"><div style="font-size:13.5px;color:#1B1F1D;font-weight:600">Show pulled posts on my profile</div><div style="font-size:11px;color:#6B7570;margin-top:2px">Display setting only &mdash; access stays</div></div>${toggleHtml('pmPost', publishState.pmPost)}</div>
+      </div>
+      <div style="padding:15px 16px 6px;font-size:12px;font-weight:700;color:#1B1F1D;letter-spacing:.02em">POSTING DEFAULTS</div>
+      <div style="background:#fff;border-top:1px solid #E6E8E6;border-bottom:1px solid #E6E8E6">
+        <div style="display:flex;align-items:center;padding:13px 16px"><div style="flex:1;font-size:13.5px;color:#1B1F1D">Toggle on by default in composer</div>${toggleHtml('pmDef', publishState.pmDef)}</div>
+        <div style="display:flex;align-items:center;padding:13px 16px;border-top:1px solid #F1F2F0"><div style="flex:1;font-size:13.5px;color:#1B1F1D">Default hashtags</div><span style="font-size:12.5px;color:#6B7570">#thyroid +2 &rsaquo;</span></div>
+        <div style="display:flex;align-items:center;padding:13px 16px;border-top:1px solid #F1F2F0"><div style="flex:1;font-size:13.5px;color:#1B1F1D">Image crop</div><span style="font-size:12.5px;color:#6B7570">4:5 feed &rsaquo;</span></div>
+      </div>
+      <div style="padding:15px 16px 6px;font-size:12px;font-weight:700;color:#1B1F1D;letter-spacing:.02em">ACTIVITY</div>
+      <div style="background:#fff;border-top:1px solid #E6E8E6;border-bottom:1px solid #E6E8E6">
+        <div style="display:flex;align-items:center;padding:13px 16px"><div style="flex:1;font-size:13.5px;color:#1B1F1D">Posts sent from Ninto</div><span style="font-size:12.5px;color:#6B7570">34 &rsaquo;</span></div>
+        <div style="display:flex;align-items:center;padding:13px 16px;border-top:1px solid #F1F2F0"><div style="flex:1;font-size:13.5px;color:#1B1F1D">Daily limit remaining</div><span style="font-size:12.5px;color:#B4772A">0 of 25</span></div>
+      </div>
+      <div style="padding:16px"><div data-nav="1n" style="height:44px;border-radius:22px;border:1px solid #F0C9C7;color:#C2352F;font-size:14px;font-weight:600;display:flex;align-items:center;justify-content:center">Disconnect Instagram</div></div>
+    </div>
+  `,
+
+  '1n': () => `
+    <div style="height:52px;background:#0C5C3D;flex:none"></div>
+    <div style="flex:1;position:relative;background:#F7F7F5">
+      <div style="padding:15px 16px;opacity:.35;pointer-events:none"><div style="height:40px;background:#fff;border-radius:10px"></div><div style="height:120px;background:#fff;border-radius:10px;margin-top:12px"></div></div>
+      <div style="position:absolute;inset:0;background:rgba(20,26,22,.42)"></div>
+      <div style="position:absolute;left:0;right:0;bottom:0;background:#fff;border-radius:18px 18px 0 0;padding:20px 18px 22px">
+        <div style="width:38px;height:4px;border-radius:2px;background:#DDE0DC;margin:0 auto 18px"></div>
+        <div style="font-size:18px;font-weight:700;color:#1B1F1D;line-height:1.3">Disconnect Instagram?</div>
+        <div style="font-size:12.5px;color:#6B7570;line-height:1.5;margin-top:7px">Choose what happens to the 18 Instagram posts showing on your Ninto profile.</div>
+        <div style="margin-top:14px;display:flex;flex-direction:column;gap:10px">
+          <div data-dc="keep" style="border-radius:12px;padding:13px;display:flex;gap:11px;cursor:pointer;border:${publishState.dc==='keep'?'1.5px solid #17A34A':'1px solid #E6E8E6'};background:${publishState.dc==='keep'?'#F4FBF6':'#fff'}">
+            <span style="width:19px;height:19px;border-radius:50%;flex:none;margin-top:1px;border:${publishState.dc==='keep'?'1.5px solid #17A34A':'1.5px solid #C9CEC9'};background:${publishState.dc==='keep'?'#17A34A':'#fff'};color:#fff;font-size:11px;display:flex;align-items:center;justify-content:center">${publishState.dc==='keep'?'&#10003;':''}</span>
+            <div><div style="font-size:13.5px;font-weight:600;color:#1B1F1D">Remove the account only</div><div style="font-size:11.5px;color:#6B7570;line-height:1.5;margin-top:3px">The 18 posts already pulled in stay on your Ninto profile as they are. Nothing new is pulled in.</div></div>
+          </div>
+          <div data-dc="wipe" style="border-radius:12px;padding:13px;display:flex;gap:11px;cursor:pointer;border:${publishState.dc==='wipe'?'1.5px solid #17A34A':'1px solid #E6E8E6'};background:${publishState.dc==='wipe'?'#F4FBF6':'#fff'}">
+            <span style="width:19px;height:19px;border-radius:50%;flex:none;margin-top:1px;border:${publishState.dc==='wipe'?'1.5px solid #17A34A':'1.5px solid #C9CEC9'};background:${publishState.dc==='wipe'?'#17A34A':'#fff'};color:#fff;font-size:11px;display:flex;align-items:center;justify-content:center">${publishState.dc==='wipe'?'&#10003;':''}</span>
+            <div><div style="font-size:13.5px;font-weight:600;color:#1B1F1D">Remove the account and its posts</div><div style="font-size:11.5px;color:#6B7570;line-height:1.5;margin-top:3px">All 18 Instagram posts come off your Ninto profile. They stay live on Instagram.</div></div>
+          </div>
+        </div>
+        <div style="margin-top:14px;padding:12px 14px;background:#FDF7EF;border:1px solid #F0D9BC;border-radius:10px;font-size:11.5px;color:#B4772A;line-height:1.5">1 Instagram post is waiting to retry. Disconnecting cancels it.</div>
+        <div style="display:flex;flex-direction:column;gap:10px;margin-top:18px">
+          <div data-nav="1k" style="height:46px;border-radius:23px;background:#C2352F;color:#fff;font-size:15px;font-weight:600;display:flex;align-items:center;justify-content:center">Disconnect</div>
+          <div data-nav="1m" style="height:46px;border-radius:23px;border:1px solid #DDE0DC;color:#1B1F1D;font-size:15px;font-weight:600;display:flex;align-items:center;justify-content:center">Keep connected</div>
+        </div>
+      </div>
+    </div>
+  `
+};
+
+
+const HOME_HEAD = `<h1>Ninto -- Connect, Publish, Measure (prototype)</h1><p>One app, real URL routes for every screen (refresh/back/forward all work -- try it). Covers two of the design's three chapters: <strong>Publish</strong> (cross-posting to external platforms) and <strong>Measure</strong> (the analytics hub). <strong>Connect</strong> (YouTube OAuth + import) is proven separately as a Node script in <code>../youtube-feasibility/check.mjs</code>, not as a UI here -- see <code>audit/</code> for why. No backend, static mock data.</p>`;
+const ANALYTICS_HEAD = `<h1>Measure -- Analytics Hub</h1><p>Tap a drill-down row on the landing screen to go there, Back returns. Period tabs (1a), platform filter (1c), and sort tabs (1g) are live.</p>`;
+const PUBLISH_HEAD = `<h1>Publish -- cross-platform posting</h1><p>Real navigation through compose -> also-post-to -> customize -> preview -> publish -> results -> manage, plus platform management. Toggles, tabs and the disconnect choice are live.</p>`;
+
+function currentRoute() {
+  const parts = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean);
+  return { section: parts[0] || null, screenId: parts[1] || null };
+}
+
+function showFrame(html, sizeClass) {
+  document.getElementById('home').style.display = 'none';
+  document.getElementById('frame-wrap').style.display = 'flex';
+  document.getElementById('frame-wrap').style.flexDirection = 'column';
+  document.getElementById('frame-wrap').style.alignItems = 'center';
+  const frame = document.getElementById('frame');
+  frame.className = 'frame ' + sizeClass;
+  frame.innerHTML = html;
+}
+
+function updateQuickNav(section, current) {
+  if (!section) { document.getElementById('quick-nav').innerHTML = ''; return; }
+  const order = section === 'analytics' ? ANALYTICS_SCREEN_ORDER : PUBLISH_SCREEN_ORDER;
+  const label = section === 'analytics' ? ANALYTICS_SCREEN_LABEL : PUBLISH_SCREEN_LABEL;
+  const home = `<button data-home>&larr; All flows</button><span class="sep"></span>`;
+  const starts = section === 'publish'
+    ? `<button data-qnav="1a" class="${current==='1a'?'active':''}">Start: Compose</button><button data-qnav="1k" class="${current==='1k'?'active':''}">Start: Manage platforms</button><span class="sep"></span>`
+    : '';
+  document.getElementById('quick-nav').innerHTML = home + starts + order.map(id =>
+    `<button data-qnav="${id}" class="${id === current ? 'active' : ''}">${label[id]}</button>`
+  ).join('');
+}
+
+function renderHome() {
+  document.getElementById('page-head').innerHTML = HOME_HEAD;
+  document.getElementById('quick-nav').innerHTML = '';
+  document.getElementById('frame-wrap').style.display = 'none';
+  const home = document.getElementById('home');
+  home.style.display = 'flex';
+  home.innerHTML = `
+    <div class="home-card" data-section="analytics">
+      <div class="tag">Measure</div>
+      <h2>Analytics Hub</h2>
+      <p>Overall roll-up, connected platforms, all posts, post detail (Ninto + YouTube-via-API side by side), link performance, revenue, top performing content.</p>
+    </div>
+    <div class="home-card" data-section="publish">
+      <div class="tag">Publish</div>
+      <h2>Cross-Post Flow</h2>
+      <p>Compose once, post to Ninto + external platforms independently, per-platform results and retry, manage connected platforms.</p>
+    </div>
+  `;
+}
+
+function renderAnalytics(screenId) {
+  if (!ANALYTICS_SCREENS[screenId]) { location.hash = '#/analytics/1a'; return; }
+  analyticsState.screen = screenId;
+  document.getElementById('page-head').innerHTML = ANALYTICS_HEAD;
+  const v = analyticsComputeVals();
+  showFrame(ANALYTICS_SCREENS[screenId](v), 'frame-analytics');
+  updateQuickNav('analytics', screenId);
+}
+
+function renderPublish(screenId) {
+  if (!PUBLISH_SCREENS[screenId]) { location.hash = '#/publish/1a'; return; }
+  publishState.screen = screenId;
+  document.getElementById('page-head').innerHTML = PUBLISH_HEAD;
+  showFrame(PUBLISH_SCREENS[screenId](), 'frame-publish');
+  updateQuickNav('publish', screenId);
+  if (screenId === '1g') {
+    setTimeout(() => { if (publishState.screen === '1g') location.hash = '#/publish/1h'; }, 1400);
+  }
+}
+
+function router() {
+  const { section, screenId } = currentRoute();
+  if (section === 'analytics') { renderAnalytics(screenId || '1a'); return; }
+  if (section === 'publish') { renderPublish(screenId || '1a'); return; }
+  renderHome();
+}
+
+document.addEventListener('click', (event) => {
+  const homeLink = event.target.closest('[data-home]');
+  if (homeLink) { location.hash = '#/'; return; }
+
+  const sectionCard = event.target.closest('[data-section]');
+  if (sectionCard) { location.hash = '#/' + sectionCard.dataset.section + '/1a'; return; }
+
+  const { section } = currentRoute();
+
+  if (section === 'analytics') {
+    const period = event.target.closest('[data-period]');
+    if (period) { analyticsState.period = period.dataset.period; router(); return; }
+    const filter = event.target.closest('[data-filter]');
+    if (filter) { analyticsState.filter = filter.dataset.filter; router(); return; }
+    const sort = event.target.closest('[data-sort]');
+    if (sort) { analyticsState.sort = sort.dataset.sort; router(); return; }
+    const qnav = event.target.closest('[data-qnav]');
+    if (qnav) { location.hash = '#/analytics/' + qnav.dataset.qnav; return; }
+    const nav = event.target.closest('[data-nav]');
+    if (nav) { location.hash = '#/analytics/' + nav.dataset.nav; return; }
+  }
+
+  if (section === 'publish') {
+    const toggle = event.target.closest('[data-toggle]');
+    if (toggle) { const k = toggle.dataset.toggle; publishState[k] = !publishState[k]; router(); return; }
+    const connect = event.target.closest('[data-connect]');
+    if (connect) { publishState.connectTarget = connect.dataset.connect; location.hash = '#/publish/1c'; return; }
+    const connectConfirm = event.target.closest('[data-connectconfirm]');
+    if (connectConfirm) { publishState[connectConfirm.dataset.connectconfirm] = true; location.hash = '#/publish/1b'; return; }
+    const tab = event.target.closest('[data-tab]');
+    if (tab) { publishState.tab = tab.dataset.tab; router(); return; }
+    const dc = event.target.closest('[data-dc]');
+    if (dc) { publishState.dc = dc.dataset.dc; router(); return; }
+    const qnav = event.target.closest('[data-qnav]');
+    if (qnav) { location.hash = '#/publish/' + qnav.dataset.qnav; return; }
+    const nav = event.target.closest('[data-nav]');
+    if (nav) { location.hash = '#/publish/' + nav.dataset.nav; return; }
+  }
+});
+
+window.addEventListener('hashchange', router);
+router();
+</script>
+</body>
+</html>
