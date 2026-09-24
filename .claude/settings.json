@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -c 'f=\"$HOME/.claude/skills/relay/scripts/check-structure.mjs\"; [ -f \"$f\" ] && node \"$f\" --errors-only'"
+          }
+        ]
+      }
+    ]
+  }
+}

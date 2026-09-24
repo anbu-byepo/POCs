@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>YouTube integration feasibility spike</title>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <style>
+      body { font-family: system-ui, sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1rem; color: #1a1a1a; }
+      h1 { font-size: 1.25rem; }
+      h2 { font-size: 1rem; margin-top: 2rem; }
+      button { font: inherit; padding: 0.5rem 1rem; cursor: pointer; }
+      input { font: inherit; padding: 0.4rem; width: 100%; box-sizing: border-box; }
+      #diagnostics { background: #f5f5f5; border: 1px solid #ddd; padding: 0.75rem; font-family: ui-monospace, monospace; font-size: 0.8rem; white-space: pre-wrap; max-height: 280px; overflow-y: auto; }
+      #channel-info { display: flex; gap: 0.75rem; align-items: center; margin-top: 0.75rem; }
+      #channel-info img { border-radius: 50%; width: 48px; height: 48px; }
+      .video-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 1rem; margin-top: 1rem; }
+      .video-grid iframe { width: 100%; aspect-ratio: 16 / 9; border: 0; }
+      .fallback { color: #666; font-style: italic; }
+      .setup { border: 1px solid #ddd; padding: 0.75rem; margin-bottom: 1rem; }
+    </style>
+  </head>
+  <body>
+    <h1>YouTube integration feasibility spike</h1>
+    <p>Internal, non-indexed spike for NINTO-547 -- click Connect, Google's real OAuth popup opens, pick any
+      account, and this page shows that account's YouTube channel + videos. No backend: everything below runs
+      in this browser tab.</p>
+
+    <div class="setup">
+      <label for="client-id">Google OAuth Web Client ID</label>
+      <input id="client-id" type="text" placeholder="xxxxxxxxxx.apps.googleusercontent.com" />
+      <p style="font-size: 0.8rem; color: #666;">
+        Saved to this browser's localStorage only. Must be a <strong>Web application</strong>-type client
+        (not the Desktop-app one used by <code>check.mjs</code>/<code>server.mjs</code>'s ADC flow), with
+        <code>http://localhost:8000</code> (and/or <code>http://127.0.0.1:8000</code>) listed under its
+        Authorized JavaScript origins in Cloud Console.
+      </p>
+    </div>
+
+    <button id="connect-button" disabled>Connect YouTube</button>
+    <div id="channel-info"></div>
+    <div id="fallback" class="fallback" hidden>No videos found on this channel.</div>
+    <div class="video-grid" id="video-grid"></div>
+
+    <h2>Diagnostics</h2>
+    <div id="diagnostics">(nothing yet)</div>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
