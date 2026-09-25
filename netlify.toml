@@ -5,4 +5,4 @@
 # reachable from this deploy, only the default "/" page is.
 [build]
   base = "youtube-feasibility"
-  publish = "youtube-feasibility"
+  publish = "."
