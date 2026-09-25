@@ -519,11 +519,11 @@ function renderManage() {
               <option value="unlisted">Unlisted</option>
               <option value="public">Public</option>
             </select></div>
-          <button class="btn-secondary" id="upload-button" type="button">Upload to YouTube</button>
-          <div id="upload-progress-wrap" hidden style="display:flex;align-items:center;gap:10px">
-            <div style="flex:1;height:8px;border-radius:4px;background:var(--divider);overflow:hidden"><div id="upload-progress-fill" style="height:100%;background:var(--accent);width:0%;transition:width .15s"></div></div>
-            <div id="upload-progress-pct" style="font-size:11.5px;font-weight:600;color:var(--muted);min-width:2.8rem;text-align:right">0%</div>
-          </div>
+          <button class="btn-secondary" id="upload-button" type="button" style="position:relative;overflow:hidden">
+            <span id="upload-button-base" hidden style="position:absolute;inset:0;background:var(--ink);z-index:0"></span>
+            <span id="upload-button-fill" hidden style="position:absolute;inset:0 100% 0 0;background:var(--accent);transition:right .15s;z-index:1"></span>
+            <span id="upload-button-label" style="position:relative;z-index:2">Upload to YouTube</span>
+          </button>
           <div id="upload-result"></div>
         </fieldset>
         <p style="font:400 11px/1.5 'DM Sans',system-ui;color:var(--faint);margin-top:8px">Sent as whichever visibility you pick above -- but YouTube silently forces every upload from an unaudited API project to <strong>private</strong> regardless of what's requested, until this project passes Google's audit.</p>
@@ -1182,10 +1182,6 @@ async function uploadVideo(file, title, description, privacyStatus) {
   logDiagnostic(`videos.insert (resumable init): HTTP 200 in ${initLatency}ms -- got upload session URL`);
   if (!uploadUrl) throw new Error("No upload session URL returned (Location header missing -- check CORS).");
 
-  const uploadProgressWrap = document.getElementById("upload-progress-wrap");
-  const uploadProgressFill = document.getElementById("upload-progress-fill");
-  const uploadProgressPct = document.getElementById("upload-progress-pct");
-
   // XHR, not fetch, because only XHR exposes upload progress events.
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
@@ -1196,8 +1192,7 @@ async function uploadVideo(file, title, description, privacyStatus) {
     xhr.upload.addEventListener("progress", (event) => {
       if (!event.lengthComputable) return;
       const pct = Math.round((event.loaded / event.total) * 100);
-      if (uploadProgressFill) uploadProgressFill.style.width = `${pct}%`;
-      if (uploadProgressPct) uploadProgressPct.textContent = `${pct}%`;
+      setUploadButtonProgress(pct);
     });
 
     xhr.addEventListener("load", () => {
@@ -1223,9 +1218,40 @@ async function uploadVideo(file, title, description, privacyStatus) {
       reject(new Error("Network error during upload"));
     });
 
-    if (uploadProgressWrap) uploadProgressWrap.hidden = false;
     xhr.send(file);
   });
+}
+
+/**
+ * Turns the upload button itself into the progress bar: a dark base plus a
+ * green fill growing left-to-right, both readable with the white label text
+ * this switches to -- avoids the usual "text over a partial fill" contrast
+ * problem a plain overlay would have against the button's normal white
+ * background.
+ * @param {number} pct
+ */
+function setUploadButtonProgress(pct) {
+  const base = document.getElementById("upload-button-base");
+  const fill = document.getElementById("upload-button-fill");
+  const label = document.getElementById("upload-button-label");
+  if (!base || !fill || !label) return;
+  base.hidden = false;
+  fill.hidden = false;
+  fill.style.right = `${100 - pct}%`;
+  label.style.color = "#fff";
+  label.textContent = `Uploading... ${pct}%`;
+}
+
+function resetUploadButton() {
+  const base = document.getElementById("upload-button-base");
+  const fill = document.getElementById("upload-button-fill");
+  const label = document.getElementById("upload-button-label");
+  if (!base || !fill || !label) return;
+  base.hidden = true;
+  fill.hidden = true;
+  fill.style.right = "100%";
+  label.style.color = "";
+  label.textContent = "Upload to YouTube";
 }
 
 async function onUploadClick() {
@@ -1249,6 +1275,7 @@ async function onUploadClick() {
   const requestedVisibility = uploadVisibilityInput.value;
   uploadButton.disabled = true;
   uploadResultEl.innerHTML = "";
+  setUploadButtonProgress(0);
   logDiagnostic(`Uploading "${file.name}" (${(file.size / 1024 / 1024).toFixed(1)} MB), requested visibility: ${requestedVisibility}...`);
 
   try {
@@ -1264,6 +1291,7 @@ async function onUploadClick() {
     uploadResultEl.innerHTML = `<p style="font-size:11.5px;color:#C0392B;margin-top:8px">Upload failed: ${escapeHtml(error.message)}</p>`;
   } finally {
     uploadButton.disabled = false;
+    resetUploadButton();
   }
 }
 
