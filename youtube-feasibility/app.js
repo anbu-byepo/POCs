@@ -1261,6 +1261,86 @@ function resetUploadButton() {
   label.textContent = "Upload to YouTube";
 }
 
+/**
+ * Reads a fresh videos.list response into a display-ready label. Prefers
+ * processingDetails.processingStatus (with a percentage, while YouTube is
+ * still transcoding it) and falls back to the simpler top-level
+ * status.uploadStatus once processingDetails stops being returned.
+ * @param {object} video
+ * @returns {{text: string, color: string, done: boolean}}
+ */
+function formatProcessingLabel(video) {
+  const pd = video.processingDetails;
+  const uploadStatus = video.status?.uploadStatus;
+
+  if (pd?.processingStatus === "processing") {
+    const total = Number(pd.processingProgress?.partsTotal ?? 0);
+    const done = Number(pd.processingProgress?.partsProcessed ?? 0);
+    const pct = total > 0 ? Math.round((done / total) * 100) : null;
+    return { text: pct != null ? `Processing on YouTube... ${pct}%` : "Processing on YouTube...", color: "var(--muted)", done: false };
+  }
+  if (pd?.processingStatus === "succeeded" || uploadStatus === "processed") {
+    return { text: "Processed -- ready to play", color: "var(--accent-dark)", done: true };
+  }
+  if (pd?.processingStatus === "failed" || uploadStatus === "failed") {
+    return {
+      text: `Processing failed${pd?.processingFailureReason ? ` (${pd.processingFailureReason})` : ""}`,
+      color: "#C0392B",
+      done: true
+    };
+  }
+  if (pd?.processingStatus === "terminated") {
+    return { text: "Processing stopped before finishing", color: "#C0392B", done: true };
+  }
+  if (uploadStatus === "rejected") {
+    return { text: `Rejected${video.status?.rejectionReason ? ` (${video.status.rejectionReason})` : ""}`, color: "#C0392B", done: true };
+  }
+  if (uploadStatus === "deleted") {
+    return { text: "Deleted", color: "#C0392B", done: true };
+  }
+  return { text: "Uploaded, waiting for processing to start...", color: "var(--muted)", done: false };
+}
+
+/**
+ * Polls videos.list until processing reaches a terminal state, updating
+ * containerEl in place. Each poll is a real, quota-costed API call, logged
+ * like every other call in this app.
+ * @param {string} videoId
+ * @param {HTMLElement} containerEl
+ */
+async function pollProcessingStatus(videoId, containerEl) {
+  const maxAttempts = 30;
+  const intervalMs = 4000;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    let video;
+    try {
+      const data = await callYouTubeApi(
+        "videos.list (processing status)",
+        `https://www.googleapis.com/youtube/v3/videos?part=status,processingDetails&id=${videoId}`,
+        1
+      );
+      video = data.items?.[0];
+    } catch (error) {
+      containerEl.innerHTML = `<p style="font-size:11px;color:#C0392B;margin-top:6px">Could not check processing status: ${escapeHtml(error.message)}</p>`;
+      return;
+    }
+
+    if (!video) {
+      containerEl.innerHTML = `<p style="font-size:11px;color:var(--faint);margin-top:6px">Video no longer found.</p>`;
+      return;
+    }
+
+    const { text, color, done } = formatProcessingLabel(video);
+    containerEl.innerHTML = `<p style="font-size:11px;color:${color};margin-top:6px">${escapeHtml(text)}</p>`;
+    if (done) return;
+
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+
+  containerEl.innerHTML += `<p style="font-size:10.5px;color:var(--faint);margin-top:4px">Stopped checking after ${maxAttempts} tries -- open YouTube Studio if it's still processing.</p>`;
+}
+
 async function onUploadClick() {
   const uploadButton = document.getElementById("upload-button");
   const uploadFileInput = document.getElementById("upload-file");
@@ -1295,7 +1375,9 @@ async function onUploadClick() {
       <a href="https://studio.youtube.com/video/${video.id}/edit" target="_blank" rel="noopener" style="display:inline-block;margin-top:8px;font-size:12px;color:var(--accent-dark);font-weight:600">
         Uploaded as ${escapeHtml(actual)}${escapeHtml(note)} -- open in YouTube Studio &#8599;
       </a>
+      <div id="upload-processing-status"><p style="font-size:11px;color:var(--faint);margin-top:6px">Checking processing status...</p></div>
     `;
+    pollProcessingStatus(video.id, document.getElementById("upload-processing-status"));
   } catch (error) {
     uploadResultEl.innerHTML = `<p style="font-size:11.5px;color:#C0392B;margin-top:8px">Upload failed: ${escapeHtml(error.message)}</p>`;
   } finally {
