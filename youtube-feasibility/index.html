@@ -90,19 +90,20 @@
         <label for="client-id">Google OAuth Web Client ID</label>
         <input id="client-id" type="text" placeholder="xxxxxxxxxx.apps.googleusercontent.com" />
         <p>
-          Saved to this browser's localStorage only. Must be a <strong>Web application</strong>-type client
-          with <code>http://localhost:8000</code> (and/or <code>http://127.0.0.1:8000</code>) under
-          Authorized JavaScript origins, and its OAuth consent screen must list
-          <code>.../auth/youtube.readonly</code>, <code>.../auth/youtube.upload</code> and
-          <code>.../auth/userinfo.email</code> as scopes (Testing status is fine as long as your account
-          is added as a test user).
+          Defaults to this project's own Client ID (hardcoded in <code>app.js</code> -- not a secret,
+          unlike a client secret, so this is safe). Override here only to test against a different
+          <strong>Web application</strong>-type client; your override is saved to this browser's
+          localStorage and takes priority from then on.
         </p>
         <p>
-          Running this from a deployed URL instead of localhost (e.g. Netlify)? Add that exact origin
-          (e.g. <code>https://your-site.netlify.app</code>, no trailing slash or path) to the same
-          client's Authorized JavaScript origins too -- Google rejects the popup otherwise with
-          <code>origin_mismatch</code>, and the client ID above still needs pasting in on every fresh
-          browser/device since it's only saved to this browser's own localStorage.
+          Whichever client ID is active, its Authorized JavaScript origins must list every origin this
+          app is actually opened from -- <code>http://localhost:8000</code> (and/or
+          <code>http://127.0.0.1:8000</code>) for local dev, and the exact deployed origin (e.g.
+          <code>https://your-site.netlify.app</code>, no trailing slash or path) for a live URL.
+          Missing one means Google rejects the popup with <code>origin_mismatch</code>. Its OAuth
+          consent screen must also list <code>.../auth/youtube.readonly</code>,
+          <code>.../auth/youtube.upload</code> and <code>.../auth/userinfo.email</code> as scopes
+          (Testing status is fine as long as your account is added as a test user).
         </p>
       </div>
     </details>

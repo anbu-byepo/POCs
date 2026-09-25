@@ -19,6 +19,12 @@
 
 const CLIENT_ID_STORAGE_KEY = "yt-feasibility-client-id";
 const SESSION_STORAGE_KEY = "yt-feasibility-session";
+// This project's own OAuth Web Client ID -- not a secret (unlike a client
+// secret, a Client ID is meant to be public; it's visible in every request
+// this app makes anyway). Its Authorized JavaScript origins must list every
+// origin this app is actually reachable from. Override it in the setup
+// panel for local testing with a different client.
+const DEFAULT_CLIENT_ID = "356302635116-hi082afmbhpg92ahaau3dj9fq385n41e.apps.googleusercontent.com";
 const SCOPES = [
   "https://www.googleapis.com/auth/youtube.readonly",
   "https://www.googleapis.com/auth/youtube.upload",
@@ -1257,9 +1263,10 @@ async function onUploadClick() {
 (function restoreClientId() {
   try {
     const saved = localStorage.getItem(CLIENT_ID_STORAGE_KEY);
-    if (saved) clientIdInput.value = saved;
+    clientIdInput.value = saved || DEFAULT_CLIENT_ID;
   } catch {
-    // localStorage unavailable (private mode) -- the input just starts empty.
+    // localStorage unavailable (private mode) -- fall back to the default directly.
+    clientIdInput.value = DEFAULT_CLIENT_ID;
   }
 })();
 
