@@ -519,6 +519,13 @@ function renderManage() {
               <option value="unlisted">Unlisted</option>
               <option value="public">Public</option>
             </select></div>
+          <div><label style="display:block;font:600 11px/1 'DM Sans',system-ui;color:var(--muted);margin-bottom:5px">Audience</label>
+            <select id="upload-made-for-kids" style="font:inherit;font-size:12.5px;padding:8px 9px;width:100%;box-sizing:border-box;border:1px solid #DDE0DC;border-radius:7px;background:#fff">
+              <option value="false">No, it's not made for kids</option>
+              <option value="true">Yes, it's made for kids</option>
+            </select>
+            <p style="font:400 10.5px/1.4 'DM Sans',system-ui;color:var(--faint);margin:5px 0 0">YouTube requires this on every upload (COPPA). Answering it here means never needing to open YouTube Studio to finish the upload.</p>
+          </div>
           <button class="btn-secondary" id="upload-button" type="button" style="position:relative;overflow:hidden">
             <span id="upload-button-base" hidden style="position:absolute;inset:0;background:var(--ink);z-index:0"></span>
             <span id="upload-button-fill" hidden style="position:absolute;inset:0 100% 0 0;background:var(--accent);transition:right .15s;z-index:1"></span>
@@ -1149,10 +1156,10 @@ function startImport() {
 // ---------------------------------------------------------------------------
 // Upload (unchanged mechanics, re-wired each time the Manage panel renders)
 
-async function uploadVideo(file, title, description, privacyStatus) {
+async function uploadVideo(file, title, description, privacyStatus, madeForKids) {
   const metadata = {
     snippet: { title: title || file.name, description: description || "" },
-    status: { privacyStatus: privacyStatus || "private" }
+    status: { privacyStatus: privacyStatus || "private", selfDeclaredMadeForKids: Boolean(madeForKids) }
   };
 
   const initStart = performance.now();
@@ -1260,6 +1267,7 @@ async function onUploadClick() {
   const uploadTitleInput = document.getElementById("upload-title");
   const uploadDescriptionInput = document.getElementById("upload-description");
   const uploadVisibilityInput = document.getElementById("upload-visibility");
+  const uploadMadeForKidsInput = document.getElementById("upload-made-for-kids");
   const uploadResultEl = document.getElementById("upload-result");
 
   const file = uploadFileInput?.files?.[0];
@@ -1273,13 +1281,14 @@ async function onUploadClick() {
   }
 
   const requestedVisibility = uploadVisibilityInput.value;
+  const madeForKids = uploadMadeForKidsInput.value === "true";
   uploadButton.disabled = true;
   uploadResultEl.innerHTML = "";
   setUploadButtonProgress(0);
-  logDiagnostic(`Uploading "${file.name}" (${(file.size / 1024 / 1024).toFixed(1)} MB), requested visibility: ${requestedVisibility}...`);
+  logDiagnostic(`Uploading "${file.name}" (${(file.size / 1024 / 1024).toFixed(1)} MB), requested visibility: ${requestedVisibility}, made for kids: ${madeForKids}...`);
 
   try {
-    const video = await uploadVideo(file, uploadTitleInput.value.trim(), uploadDescriptionInput.value.trim(), requestedVisibility);
+    const video = await uploadVideo(file, uploadTitleInput.value.trim(), uploadDescriptionInput.value.trim(), requestedVisibility, madeForKids);
     const actual = video.status?.privacyStatus ?? "private";
     const note = actual === requestedVisibility ? "" : ` (requested ${requestedVisibility}, YouTube forced it to ${actual})`;
     uploadResultEl.innerHTML = `
