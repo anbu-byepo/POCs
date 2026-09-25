@@ -513,6 +513,12 @@ function renderManage() {
             <input id="upload-title" type="text" placeholder="Uploaded from Ninto POC" style="font:inherit;font-size:12.5px;padding:8px 9px;width:100%;box-sizing:border-box;border:1px solid #DDE0DC;border-radius:7px" /></div>
           <div><label style="display:block;font:600 11px/1 'DM Sans',system-ui;color:var(--muted);margin-bottom:5px">Description</label>
             <textarea id="upload-description" rows="2" placeholder="Optional" style="font:inherit;font-size:12.5px;padding:8px 9px;width:100%;box-sizing:border-box;border:1px solid #DDE0DC;border-radius:7px"></textarea></div>
+          <div><label style="display:block;font:600 11px/1 'DM Sans',system-ui;color:var(--muted);margin-bottom:5px">Visibility</label>
+            <select id="upload-visibility" style="font:inherit;font-size:12.5px;padding:8px 9px;width:100%;box-sizing:border-box;border:1px solid #DDE0DC;border-radius:7px;background:#fff">
+              <option value="private">Private</option>
+              <option value="unlisted">Unlisted</option>
+              <option value="public">Public</option>
+            </select></div>
           <button class="btn-secondary" id="upload-button" type="button">Upload to YouTube</button>
           <div id="upload-progress-wrap" hidden style="display:flex;align-items:center;gap:10px">
             <div style="flex:1;height:8px;border-radius:4px;background:var(--divider);overflow:hidden"><div id="upload-progress-fill" style="height:100%;background:var(--accent);width:0%;transition:width .15s"></div></div>
@@ -520,7 +526,7 @@ function renderManage() {
           </div>
           <div id="upload-result"></div>
         </fieldset>
-        <p style="font:400 11px/1.5 'DM Sans',system-ui;color:var(--faint);margin-top:8px">Uploaded as <strong>private</strong> -- YouTube restricts every upload from an unaudited API project to private viewing, regardless of what's requested here.</p>
+        <p style="font:400 11px/1.5 'DM Sans',system-ui;color:var(--faint);margin-top:8px">Sent as whichever visibility you pick above -- but YouTube silently forces every upload from an unaudited API project to <strong>private</strong> regardless of what's requested, until this project passes Google's audit.</p>
       </div>
 
       ${state.showDisconnectSheet ? renderDisconnectSheet() : ""}
@@ -1143,10 +1149,10 @@ function startImport() {
 // ---------------------------------------------------------------------------
 // Upload (unchanged mechanics, re-wired each time the Manage panel renders)
 
-async function uploadVideo(file, title, description) {
+async function uploadVideo(file, title, description, privacyStatus) {
   const metadata = {
     snippet: { title: title || file.name, description: description || "" },
-    status: { privacyStatus: "private" }
+    status: { privacyStatus: privacyStatus || "private" }
   };
 
   const initStart = performance.now();
@@ -1227,6 +1233,7 @@ async function onUploadClick() {
   const uploadFileInput = document.getElementById("upload-file");
   const uploadTitleInput = document.getElementById("upload-title");
   const uploadDescriptionInput = document.getElementById("upload-description");
+  const uploadVisibilityInput = document.getElementById("upload-visibility");
   const uploadResultEl = document.getElementById("upload-result");
 
   const file = uploadFileInput?.files?.[0];
@@ -1239,15 +1246,18 @@ async function onUploadClick() {
     return;
   }
 
+  const requestedVisibility = uploadVisibilityInput.value;
   uploadButton.disabled = true;
   uploadResultEl.innerHTML = "";
-  logDiagnostic(`Uploading "${file.name}" (${(file.size / 1024 / 1024).toFixed(1)} MB)...`);
+  logDiagnostic(`Uploading "${file.name}" (${(file.size / 1024 / 1024).toFixed(1)} MB), requested visibility: ${requestedVisibility}...`);
 
   try {
-    const video = await uploadVideo(file, uploadTitleInput.value.trim(), uploadDescriptionInput.value.trim());
+    const video = await uploadVideo(file, uploadTitleInput.value.trim(), uploadDescriptionInput.value.trim(), requestedVisibility);
+    const actual = video.status?.privacyStatus ?? "private";
+    const note = actual === requestedVisibility ? "" : ` (requested ${requestedVisibility}, YouTube forced it to ${actual})`;
     uploadResultEl.innerHTML = `
       <a href="https://studio.youtube.com/video/${video.id}/edit" target="_blank" rel="noopener" style="display:inline-block;margin-top:8px;font-size:12px;color:var(--accent-dark);font-weight:600">
-        Uploaded -- open in YouTube Studio (private) &#8599;
+        Uploaded as ${escapeHtml(actual)}${escapeHtml(note)} -- open in YouTube Studio &#8599;
       </a>
     `;
   } catch (error) {
