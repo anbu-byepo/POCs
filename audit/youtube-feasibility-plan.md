@@ -4,27 +4,34 @@
 
 A standalone, disposable proof for NINTO-547 ("Tech Feasibility - Youtube Integration"), isolated
 from the `ninto` repo entirely. It empirically proves the riskiest mechanics the ticket describes
-— OAuth connect, automatic channel detection, video-import preview with the 0-video fallback —
-against Google's real APIs, rather than only estimating them on paper.
+— OAuth connect (with a real per-visitor account picker), automatic channel detection, and
+video-import preview with the 0-video fallback — against Google's real APIs, rather than only
+estimating them on paper.
 
-**No backend, and no browser OAuth popup either — this runs as a one-shot Node script authenticated
-via Application Default Credentials (ADC).**
+**No backend at all.** The whole app is a static page (`index.html` + `app.js`) authenticated with
+Google Identity Services' browser token-client flow (`google.accounts.oauth2.initTokenClient`) —
+a real "tap Connect → Google's consent screen, pick any account → tap Allow" popup, exactly the
+in-app UX the ticket describes. Every YouTube Data API call runs directly from the browser tab
+with the access token that popup returns.
 
 ```
 youtube-feasibility/
   package.json
-  check.mjs       -- the script
-  results.html    -- generated on a successful run, gitignored
+  index.html      -- the app's screens (matches the connect/manage/measure design doc)
+  app.js          -- OAuth, API calls, all screen logic
+  server.mjs      -- static file server, local dev only (Netlify serves the same files directly)
 ```
 
-**Trade-off, stated plainly:** ADC authenticates as *your own* gcloud/developer identity through a
-one-time CLI login, not through the actual in-app "HP taps Connect → sees Google's consent screen →
-taps Allow" popup the ticket describes. It proves the YouTube Data API mechanics (channel
-auto-detection, the uploads-playlist walk, the embeddable/public filter, real quota cost) but not
-the consumer-facing OAuth UX. An earlier version of this spike used a static page with Google
-Identity Services' browser token-client flow instead — that does prove the real popup UX and needs
-no ADC setup at all — but was replaced at the user's request for speed. Revive it later if the
-popup UX itself needs proving (git history / ask Claude, it's short).
+**Trade-off, stated plainly:** this only proves the mechanics for whichever Google account a
+tester picks in the popup — there's no server-side refresh-token storage, so a returning visitor
+without a cached (still-valid) access token in their own browser sees the popup again rather than
+silently staying signed in.
+
+An earlier version of this spike instead used a one-shot Node script (`check.mjs`) authenticated
+via Application Default Credentials (ADC) — the developer's own `gcloud` identity, no browser
+popup, no Web-application OAuth client to register. It proved the same YouTube Data API mechanics
+but not the actual consumer-facing OAuth UX, and was removed once the browser-popup version above
+replaced it as the sole approach (git history has it, if a script-only proof is ever needed again).
 
 A relay-scaffolded Firebase project (`functions/`, `app/poc/`, `packages/app/`,
 `firestore.rules`, etc.) was built first per the original plan, including working around a real
@@ -34,52 +41,38 @@ case a later, different spike in this same `POCs` project needs a real backend.
 
 ## Running it
 
-1. **Google Cloud project + API** (same as before): create/reuse a project, enable **YouTube Data
-   API v3**.
-2. **A Desktop-app-type OAuth client** — this is the part that changed. ADC's
-   `--client-id-file` flow requires `Application type: Desktop app` specifically; a Web-application
-   client (what the earlier browser-page version used) fails with `client_type_mismatch`.
+1. **Google Cloud project + API**: create/reuse a project, enable **YouTube Data API v3**.
+2. **A Web-application-type OAuth client**:
    - Cloud Console → **APIs & Services → Credentials → Create Credentials → OAuth client ID →
-     Desktop app**.
-   - Download its JSON (the download icon next to the new client) to somewhere local, e.g.
-     `~/Downloads/client_secret_youtube_poc.json`.
-3. **One-time ADC login**, requesting the YouTube scope through your own client (gcloud's own
-   built-in client isn't approved for it):
+     Web application**.
+   - Add `http://localhost:8000` (and/or `http://127.0.0.1:8000`, or the deployed origin if not
+     running locally) under **Authorized JavaScript origins**.
+   - Its OAuth consent screen must list `.../auth/youtube.readonly`, `.../auth/youtube.upload` and
+     `.../auth/userinfo.email` as scopes (Testing status is fine as long as your account is added
+     as a test user).
+3. Run it:
    ```
-   gcloud auth application-default login \
-     --client-id-file=~/Downloads/client_secret_youtube_poc.json \
-     --scopes=openid,https://www.googleapis.com/auth/userinfo.email,https://www.googleapis.com/auth/youtube.readonly
+   cd youtube-feasibility && pnpm install && pnpm run serve
    ```
-   This opens a real browser consent screen once; the resulting credentials are cached at
-   `~/.config/gcloud/application_default_credentials.json` and picked up automatically by every
-   run below.
-4. Run it:
-   ```
-   cd youtube-feasibility && pnpm install && pnpm run check
-   ```
-5. Read the console output — every call's latency and running YouTube quota-unit total, the
+   Open `http://localhost:8000`, paste the OAuth Client ID into the setup panel (saved to that
+   browser's localStorage), and tap **Continue with Google**.
+4. Watch the diagnostics panel — every call's latency and running YouTube quota-unit total, the
    channel's stats, each public+embeddable video found (or the 0-video / no-channel fallback
-   message). On success it also writes `results.html` — open that directly in a browser to check
-   real embed playback.
-
-**Verified working end-to-end before handoff:** running the script with no YouTube scope granted
-yet produced a real network round-trip to `googleapis.com` and a correctly parsed
-`insufficientPermissions` error — confirming the whole auth/request/error-handling path is live,
-not just syntactically valid. It should just work once step 3 above is done.
+   message).
 
 ## What it proves / doesn't prove
-
-Same table as the original plan — unchanged by dropping the backend, since the backend was never
-what these questions depend on:
 
 | Ticket claim | Proven here? |
 |---|---|
 | "Ninto identifies their channel automatically" | **Yes** — `channels.list mine=true` |
 | "Preview screen of the videos found... fallback if 0 videos" | **Yes** — including the empty-playlist path, and a "no channel at all" path the ticket didn't separately call out |
 | Embeddable/playable rendering | **Yes** — real `videos.status.embeddable` check, real `youtube-nocookie.com` embed |
-| Real quota cost of connect+preview | **Yes** — measured live in the diagnostics panel (3 units: 1 each for channels/playlistItems/videos) |
-| Long-term storage, refresh, disconnect, re-login state | **No** — no refresh token requested at all |
-| Auto-sync of new videos (WebSub), cross-posting, analytics, transcripts | **No** — out of scope, covered only by the earlier desk-research report |
+| Real quota cost of connect+preview | **Yes** — measured live in the diagnostics panel |
+| Manage: per-video hide, disconnect (keep or remove), reconnect a different account | **Yes** — client-only state (no real Ninto backend to persist against), stated as such in the UI |
+| Ongoing sync: new videos, videos that become unavailable | **Partial** — a manual "Check for updates" re-fetches and diffs against a stored snapshot, proving the mechanic against live data; an unattended daily job needs a stored refresh token and a real server, neither of which exist here |
+| Measure: reach, engagement, top content | **Partial** — real view/like/comment totals and a live-sortable ranked list; cross-platform traffic, conversions and revenue are Ninto-side metrics with no YouTube API equivalent, so they're not shown rather than faked |
+| Long-term server-side token storage/refresh | **No** — the access token is cached in the visitor's own browser localStorage until its ~1hr expiry; no refresh token requested |
+| Cross-posting, transcripts | **No** — out of scope, covered only by the earlier desk-research report |
 
 ## pnpm notes (kept in case the abandoned backend scaffold is revived)
 

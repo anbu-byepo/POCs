@@ -44,7 +44,7 @@ restricted scope, so that cost class doesn't apply here.
 
 ## Per-call costs actually exercised by this POC
 
-Measured live by `check.mjs` / `app.js` (see `youtube-feasibility-plan.md`) and cross-checked
+Measured live by `app.js` (see `youtube-feasibility-plan.md`) and cross-checked
 against Google's quota-cost table:
 
 | Call | Unit cost | Bucket | Used for |

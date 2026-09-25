@@ -4,11 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "node check.mjs",
     "serve": "node server.mjs"
   },
   "dependencies": {
-    "express": "^4.21.0",
-    "googleapis": "^144.0.0"
+    "express": "^4.21.0"
   }
 }
