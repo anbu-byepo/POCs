@@ -97,6 +97,13 @@
           <code>.../auth/userinfo.email</code> as scopes (Testing status is fine as long as your account
           is added as a test user).
         </p>
+        <p>
+          Running this from a deployed URL instead of localhost (e.g. Netlify)? Add that exact origin
+          (e.g. <code>https://your-site.netlify.app</code>, no trailing slash or path) to the same
+          client's Authorized JavaScript origins too -- Google rejects the popup otherwise with
+          <code>origin_mismatch</code>, and the client ID above still needs pasting in on every fresh
+          browser/device since it's only saved to this browser's own localStorage.
+        </p>
       </div>
     </details>
 

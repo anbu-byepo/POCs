@@ -1,0 +1,8 @@
+# youtube-poc.netlify.app -- publishes the static per-visitor OAuth app
+# (youtube-feasibility/index.html + app.js) directly, no build step. This
+# app needs no backend: server.mjs (Express) is dev-only and won't run on
+# Netlify -- its /adc route (Application Default Credentials demo) is not
+# reachable from this deploy, only the default "/" page is.
+[build]
+  base = "youtube-feasibility"
+  publish = "youtube-feasibility"
