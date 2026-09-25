@@ -1,26 +1,31 @@
 #!/usr/bin/env node
 /**
- * NINTO-547 feasibility check -- htmx front end, Application Default
- * Credentials on the server. No browser OAuth popup, no Web-application
- * client to register/maintain. Trade-off, same as check.mjs: the account is
- * fixed to whichever identity `gcloud auth application-default login`
- * authenticated as -- there is no per-visitor account picker here. See
- * ../audit/youtube-feasibility-plan.md.
+ * NINTO-547 feasibility check. Default route ("/") serves the static
+ * per-visitor OAuth app (index.html + app.js) -- real Google account picker,
+ * no ADC needed, see ../audit/youtube-feasibility-plan.md. The ADC-based
+ * variant (fixed to whichever identity `gcloud auth application-default
+ * login` authenticated as, no browser popup) is kept for reference at
+ * "/adc".
  */
 import express from "express";
 import { google } from "googleapis";
+import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const SCOPE = "https://www.googleapis.com/auth/youtube.readonly";
 const PORT = process.env.PORT || 8000;
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const app = express();
+
+app.use(express.static(__dirname));
 
 /** @param {unknown} value @returns {string} */
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 }
 
-app.get("/", (request, response) => {
+app.get("/adc", (request, response) => {
   response.type("html").send(`<!doctype html>
 <html lang="en">
 <head>
@@ -47,9 +52,8 @@ app.get("/", (request, response) => {
   <h1>YouTube integration feasibility spike (htmx + ADC)</h1>
   <p>Server-rendered, authenticated with Application Default Credentials -- fixed to whichever Google
     account you last ran <code>gcloud auth application-default login</code> as. No browser OAuth popup,
-    no Web-application client. For per-visitor account picking instead, a browser-popup version existed
-    earlier in this project's history -- ask if you want it rebuilt (needs a fresh Web-application client,
-    since the old one was deleted).</p>
+    no Web-application client. For per-visitor account picking instead, see <a href="/">the default page</a>,
+    which uses a real browser OAuth popup (Google Identity Services) with its own account chooser.</p>
   <button hx-get="/check" hx-target="#result" hx-swap="innerHTML" hx-indicator="#spinner">
     Check channel
   </button>
