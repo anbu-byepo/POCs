@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<style>
+  body { margin:0; font-family: system-ui, -apple-system, "Segoe UI", "Helvetica Neue", Arial, sans-serif; background:#F1F3F0; -webkit-font-smoothing:antialiased; }
+  a { color:#0B6B3A; text-decoration:none; }
+  a:hover { color:#084F2B; text-decoration:underline; }
+</style>
+</helmet>
+
+<section style="padding:56px 56px 96px; display:flex; flex-direction:column; gap:56px;">
+
+  <div style="display:flex; flex-direction:column; gap:8px; max-width:760px;">
+    <div style="display:inline-flex; align-self:flex-start; padding:4px 10px; border-radius:999px; background:#0E4A32; color:#FFFFFF; font-size:12px; font-weight:700; letter-spacing:0.06em;">1A</div>
+    <h1 style="margin:8px 0 0; font-size:30px; line-height:1.15; color:#12241B; font-weight:700;">Google Business Profile — setup &amp; management</h1>
+    <p style="margin:0; font-size:15px; line-height:1.55; color:#5B6660; text-wrap:pretty;">Eleven screens covering the prompt, the consent step, the three listing paths (existing, unclaimed, new), Google's verification handoff, and ongoing management.</p>
+  </div>
+
+  <!-- ROW 1: entry points -->
+  <div style="display:flex; flex-direction:column; gap:18px;">
+    <div style="font-size:13px; font-weight:700; letter-spacing:0.1em; color:#7A867F;">STEP 1 · PROMPT AFTER VERIFICATION</div>
+    <div style="display:flex; flex-wrap:wrap; gap:28px;">
+
+      <!-- 1. Home feed nudge -->
+      <div style="display:flex; flex-direction:column; gap:10px;">
+        <div style="font-size:13px; font-weight:600; color:#3C463F;">1 · Home feed prompt</div>
+        <div style="width:360px; height:780px; background:#FFFFFF; border:1px solid #DFE4E0; border-radius:14px; overflow:hidden; display:flex; flex-direction:column; box-shadow:0 6px 20px rgba(18,36,27,0.06);">
+          <div style="background:#0E4A32; padding:14px 16px; display:flex; align-items:center; gap:12px;">
+            <div style="width:18px; height:14px; display:flex; flex-direction:column; justify-content:space-between;">
+              <div style="height:2px; background:#FFFFFF; border-radius:2px;"></div>
+              <div style="height:2px; background:#FFFFFF; border-radius:2px;"></div>
+              <div style="height:2px; background:#FFFFFF; border-radius:2px;"></div>
+            </div>
+            <div style="flex:1; height:32px; border-radius:8px; background:rgba(255,255,255,0.12); display:flex; align-items:center; padding:0 12px; color:rgba(255,255,255,0.75); font-size:13px;">Search clinics...</div>
+            <div style="width:18px; height:18px; border-radius:4px; background:rgba(255,255,255,0.25);"></div>
+          </div>
+          <div style="display:flex; background:#0E4A32; padding:0 16px;">
+            <div style="flex:1; text-align:center; padding:12px 0; color:#FFFFFF; font-size:14px; font-weight:600; border-bottom:3px solid #FFFFFF;">For you</div>
+            <div style="flex:1; text-align:center; padding:12px 0; color:rgba(255,255,255,0.6); font-size:14px;">Following</div>
+          </div>
+
+          <div style="flex:1; overflow:hidden;">
+            <div style="padding:16px; border-bottom:1px solid #EEF0ED;">
+              <div style="border:1px solid #CDE7D6; background:#F4FBF6; border-radius:12px; padding:16px; display:flex; flex-direction:column; gap:12px;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <div style="width:18px; height:18px; border-radius:50%; background:#0EA04A; color:#FFFFFF; font-size:11px; font-weight:700; display:flex; align-items:center; justify-content:center;">✓</div>
+                  <div style="font-size:12px; font-weight:700; letter-spacing:0.04em; color:#0B6B3A;">VERIFICATION COMPLETE</div>
+                </div>
+                <div style="font-size:18px; font-weight:700; color:#12241B; line-height:1.3;">Get your practice on Google Maps</div>
+                <div style="font-size:14px; line-height:1.5; color:#4A544D; text-wrap:pretty;">Ninto can set up and manage your Google Business Profile, so care seekers nearby find you on Search and Maps.</div>
+                <div style="display:flex; gap:10px; align-items:center; margin-top:2px;">
+                  <div style="background:#0EA04A; color:#FFFFFF; font-size:14px; font-weight:700; padding:11px 20px; border-radius:8px;">Set up</div>
+                  <div style="color:#5B6660; font-size:14px; font-weight:600; padding:11px 8px;">Not now</div>
+                </div>
+              </div>
+            </div>
+            <div style="padding:16px; border-bottom:1px solid #EEF0ED; display:flex; flex-direction:column; gap:8px;">
+              <div style="font-size:12px; color:#7A867F;">PCOS · PCOD ›</div>
+              <div style="display:flex; gap:10px; align-items:center;">
+                <div style="width:34px; height:34px; border-radius:50%; background:#E7EDE9; color:#3C463F; font-size:12px; font-weight:700; display:flex; align-items:center; justify-content:center;">AS</div>
+                <div style="flex:1;">
+                  <div style="display:flex; align-items:center; gap:6px;">
+                    <div style="font-size:14px; font-weight:700; color:#12241B;">Dr. Anjali Shah</div>
+                    <div style="font-size:11px; font-weight:600; color:#0B6B3A; background:#E6F4EA; padding:2px 7px; border-radius:999px;">Doctor</div>
+                  </div>
+                  <div style="font-size:12px; color:#7A867F;">Gynecologist · Mumbai · 2h ago</div>
+                </div>
+              </div>
+              <div style="font-size:14px; line-height:1.55; color:#2C332E;">Three things I wish care seekers knew about PCOS before their first appointment:</div>
+              <div style="display:flex; gap:8px; margin-top:4px;">
+                <div style="font-size:12px; color:#3C463F; background:#EEF3EF; padding:4px 9px; border-radius:6px;">PCOS</div>
+                <div style="font-size:12px; color:#3C463F; background:#EEF3EF; padding:4px 9px; border-radius:6px;">Care seeker education</div>
+              </div>
+            </div>
+          </div>
+
+          <div style="display:flex; border-top:1px solid #E5E9E6; background:#FFFFFF; padding:8px 0 10px;">
+            <div style="flex:1; display:flex; flex-direction:column; align-items:center; gap:4px;">
+              <div style="width:18px; height:18px; border-radius:4px; background:#0EA04A;"></div>
+              <div style="font-size:10px; color:#0B6B3A; font-weight:700;">Home</div>
+            </div>
+            <div style="flex:1; display:flex; flex-direction:column; align-items:center; gap:4px;">
+              <div style="width:18px; height:18px; border-radius:4px; background:#C8CFCA;"></div>
+              <div style="font-size:10px; color:#7A867F;">Inbox</div>
+            </div>
+            <div style="flex:1; display:flex; flex-direction:column; align-items:center; gap:4px;">
+              <div style="width:18px; height:18px; border-radius:4px; background:#C8CFCA;"></div>
+              <div style="font-size:10px; color:#7A867F;">Schedule</div>
+            </div>
+            <div style="flex:1; display:flex; flex-direction:column; align-items:center; gap:4px;">
+              <div style="width:18px; height:18px; border-radius:4px; background:#C8CFCA;"></div>
+              <div style="font-size:10px; color:#7A867F;">Practice</div>
+            </div>
+            <div style="flex:1; display:flex; flex-direction:column; align-items:center; gap:4px;">
+              <div style="width:18px; height:18px; border-radius:50%; background:#C8CFCA;"></div>
+              <div style="font-size:10px; color:#7A867F;">Profile</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. Profile prompt -->
+      <div style="display:flex; flex-direction:column; gap:10px;">
+        <div style="font-size:13px; font-weight:600; color:#3C463F;">2 · Profile prompt</div>
+        <div style="width:360px; height:780px; background:#FFFFFF; border:1px solid #DFE4E0; border-radius:14px; overflow:hidden; display:flex; flex-direction:column; box-shadow:0 6px 20px rgba(18,36,27,0.06);">
+          <div style="padding:14px 16px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid #EEF0ED;">
+            <div style="display:flex; align-items:center; gap:10px; color:#0B6B3A; font-size:16px; font-weight:700;"><span>←</span> Profile</div>
+            <div style="color:#7A867F; font-size:18px;">⋮</div>
+          </div>
+          <div style="flex:1; overflow:hidden; display:flex; flex-direction:column; align-items:center; padding:20px 16px 0;">
+            <div style="width:96px; height:96px; border-radius:50%; background:#E7EDE9; border:3px solid #FFFFFF; box-shadow:0 0 0 1px #DFE4E0;"></div>
+            <div style="display:flex; align-items:center; gap:7px; margin-top:14px;">
+              <div style="font-size:22px; font-weight:700; color:#12241B;">Dr. Meera Nair</div>
+              <div style="width:18px; height:18px; border-radius:50%; background:#0EA04A; color:#FFFFFF; font-size:11px; font-weight:700; display:flex; align-items:center; justify-content:center;">✓</div>
+            </div>
+            <div style="font-size:13px; color:#5B6660; margin-top:6px;">Endocrinologist · MBBS, MD · Chennai</div>
+
+            <div style="display:flex; gap:10px; width:100%; margin-top:18px;">
+              <div style="flex:1; border:1px solid #DFE4E0; border-radius:999px; padding:11px 0; text-align:center;">
+                <div style="font-size:14px; font-weight:700; color:#12241B;">Follow</div>
+                <div style="font-size:9px; color:#7A867F; letter-spacing:0.06em;">JOIN 847 PATIENTS</div>
+              </div>
+              <div style="flex:1; background:#0EA04A; border-radius:999px; padding:11px 0; text-align:center;">
+                <div style="font-size:14px; font-weight:700; color:#FFFFFF;">Book</div>
+                <div style="font-size:9px; color:rgba(255,255,255,0.8); letter-spacing:0.06em;">VIA PRACTO</div>
+              </div>
+            </div>
+
+            <div style="width:100%; margin-top:20px; border:1px solid #CDE7D6; background:#F4FBF6; border-radius:12px; padding:14px; display:flex; gap:12px; align-items:flex-start;">
+              <div style="width:34px; height:34px; border-radius:8px; background:#E6F4EA; display:flex; align-items:center; justify-content:center; color:#0B6B3A; font-size:16px; font-weight:700;">◎</div>
+              <div style="flex:1; display:flex; flex-direction:column; gap:4px;">
+                <div style="font-size:15px; font-weight:700; color:#12241B;">Google Business Profile</div>
+                <div style="font-size:13px; line-height:1.45; color:#4A544D;">Not set up. Add your practice to Google Search and Maps.</div>
+                <div style="align-self:flex-start; margin-top:8px; background:#0EA04A; color:#FFFFFF; font-size:13px; font-weight:700; padding:9px 16px; border-radius:8px;">Set up</div>
+              </div>
+            </div>
+
+            <div style="width:100%; margin-top:22px; display:flex; flex-direction:column; gap:8px;">
+              <div style="font-size:11px; font-weight:700; letter-spacing:0.08em; color:#7A867F;">ABOUT</div>
+              <div style="font-size:14px; line-height:1.55; color:#2C332E; text-wrap:pretty;">I help care seekers understand the patterns driving their PCOS, thyroid, and diabetes — so they can make decisions that hold.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3. Benefits sheet -->
+      <div style="display:flex; flex-direction:column; gap:10px;">
+        <div style="font-size:13px; font-weight:600; color:#3C463F;">3 · Benefits &amp; consent sheet</div>
+        <div style="width:360px; height:780px; background:#12241B; border:1px solid #DFE4E0; border-radius:14px; overflow:hidden; display:flex; flex-direction:column; justify-content:flex-end; box-shadow:0 6px 20px rgba(18,36,27,0.06);">
+          <div style="background:#FFFFFF; border-radius:18px 18px 0 0; padding:10px 20px 22px; display:flex; flex-direction:column; gap:16px;">
+            <div style="width:42px; height:4px; border-radius:999px; background:#DFE4E0; align-self:center;"></div>
+            <div style="display:flex; flex-direction:column; gap:6px;">
+              <div style="font-size:20px; font-weight:700; color:#12241B; line-height:1.25;">Your practice on Google, managed by Ninto</div>
+              <div style="font-size:13px; line-height:1.5; color:#5B6660;">A Google Business Profile is the panel people see when they search your clinic's name or look for a nearby specialist.</div>
+            </div>
+            <div style="display:flex; flex-direction:column; gap:12px;">
+              <div style="display:flex; gap:10px; align-items:flex-start;">
+                <div style="width:18px; height:18px; border-radius:50%; background:#E6F4EA; color:#0B6B3A; font-size:11px; font-weight:700; display:flex; align-items:center; justify-content:center; flex:none; margin-top:1px;">✓</div>
+                <div style="font-size:14px; line-height:1.45; color:#2C332E;">Appear on Google Search and Maps for your practice location</div>
+              </div>
+              <div style="display:flex; gap:10px; align-items:flex-start;">
+                <div style="width:18px; height:18px; border-radius:50%; background:#E6F4EA; color:#0B6B3A; font-size:11px; font-weight:700; display:flex; align-items:center; justify-content:center; flex:none; margin-top:1px;">✓</div>
+                <div style="font-size:14px; line-height:1.45; color:#2C332E;">Clinic hours, address, and phone stay in sync with Ninto</div>
+              </div>
+              <div style="display:flex; gap:10px; align-items:flex-start;">
+                <div style="width:18px; height:18px; border-radius:50%; background:#E6F4EA; color:#0B6B3A; font-size:11px; font-weight:700; display:flex; align-items:center; justify-content:center; flex:none; margin-top:1px;">✓</div>
+                <div style="font-size:14px; line-height:1.45; color:#2C332E;">Your Ninto profile becomes the listing's website link</div>
+              </div>
+              <div style="display:flex; gap:10px; align-items:flex-start;">
+                <div style="width:18px; height:18px; border-radius:50%; background:#E6F4EA; color:#0B6B3A; font-size:11px; font-weight:700; display:flex; align-items:center; justify-content:center; flex:none; margin-top:1px;">✓</div>
+                <div style="font-size:14px; line-height:1.45; color:#2C332E;">Reviews and questions surface in your Ninto inbox</div>
+              </div>
+            </div>
+            <div style="background:#F4F6F4; border-radius:10px; padding:12px 14px; font-size:12px; line-height:1.5; color:#4A544D;">Ninto becomes a manager on the listing. You stay the owner, and you can remove our access at any time from Manage listing.</div>
+            <div style="display:flex; flex-direction:column; gap:8px;">
+              <div style="background:#0EA04A; color:#FFFFFF; font-size:15px; font-weight:700; padding:14px 0; border-radius:10px; text-align:center;">Continue with Google</div>
+              <div style="color:#5B6660; font-size:14px; font-weight:600; padding:10px 0; text-align:center;">Maybe later</div>
+            </div>
+            <div style="font-size:11px; color:#7A867F; text-align:center;">You'll sign in to your Google account to continue.</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ROW 2: consent + branching -->
+  <div style="display:flex; flex-direction:column; gap:18px;">
+    <div style="font-size:13px; font-weight:700; letter-spacing:0.1em; color:#7A867F;">STEP 2 · SIGN IN, THEN ONE OF THREE PATHS</div>
+    <div style="display:flex; flex-wrap:wrap; gap:28px;">
+
+      <!-- 4. OAuth handoff -->
+      <div style="display:flex; flex-direction:column; gap:10px;">
+        <div style="font-size:13px; font-weight:600; color:#3C463F;">4 · Google sign-in handoff (external)</div>
+        <div style="width:360px; height:780px; background:#FFFFFF; border:1px solid #DFE4E0; border-radius:14px; overflow:hidden; display:flex; flex-direction:column; box-shadow:0 6px 20px rgba(18,36,27,0.06);">
+          <div style="padding:12px 16px; background:#F4F6F4; border-bottom:1px solid #E5E9E6; display:flex; align-items:center; gap:10px;">
+            <div style="color:#5B6660; font-size:15px;">✕</div>
+            <div style="flex:1; font-size:12px; color:#5B6660;">accounts.google.com</div>
+            <div style="font-size:11px; color:#7A867F; background:#E7EDE9; padding:3px 8px; border-radius:999px;">External</div>
+          </div>
+          <div style="flex:1; padding:28px 22px; display:flex; flex-direction:column; gap:22px;">
+            <div style="font-size:20px; font-weight:600; color:#12241B; line-height:1.3;">Choose an account to continue to Ninto</div>
+            <div style="display:flex; flex-direction:column; gap:2px;">
+              <div style="display:flex; align-items:center; gap:12px; padding:14px 4px; border-bottom:1px solid #EEF0ED;">
+                <div style="width:34px; height:34px; border-radius:50%; background:#E7EDE9;"></div>
+                <div style="flex:1;">
+                  <div style="font-size:14px; font-weight:600; color:#12241B;">Dr. Meera Nair</div>
+                  <div style="font-size:12px; color:#7A867F;">meera.nair@gmail.com</div>
+                </div>
+              </div>
+              <div style="display:flex; align-items:center; gap:12px; padding:14px 4px; border-bottom:1px solid #EEF0ED;">
+                <div style="width:34px; height:34px; border-radius:50%; background:#E7EDE9;"></div>
+                <div style="flex:1;">
+                  <div style="font-size:14px; font-weight:600; color:#12241B;">Nair Endocrine Clinic</div>
+                  <div style="font-size:12px; color:#7A867F;">clinic@nairendo.in</div>
+                </div>
+              </div>
+              <div style="display:flex; align-items:center; gap:12px; padding:14px 4px;">
+                <div style="width:34px; height:34px; border-radius:50%; border:1px solid #DFE4E0;"></div>
+                <div style="font-size:14px; color:#3C463F;">Use another account</div>
+              </div>
+            </div>
+            <div style="background:#F4F6F4; border-radius:10px; padding:14px; display:flex; flex-direction:column; gap:10px;">
+              <div style="font-size:12px; font-weight:700; letter-spacing:0.04em; color:#4A544D;">NINTO WILL BE ABLE TO</div>
+              <div style="font-size:13px; line-height:1.5; color:#2C332E;">See and manage your Google Business Profile listings</div>
+              <div style="font-size:13px; line-height:1.5; color:#2C332E;">Read and reply to reviews on those listings</div>
+            </div>
+            <div style="font-size:11px; line-height:1.5; color:#7A867F;">This screen is Google's. Ninto never sees your password, and you can revoke access from your Google account or from Ninto.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 5. Existing listings -->
+      <div style="display:flex; flex-direction:column; gap:10px;">
+        <div style="font-size:13px; font-weight:600; color:#3C463F;">5a · Listings already on the account</div>
+        <div style="width:360px; height:780px; background:#FFFFFF; border:1px solid #DFE4E0; border-radius:14px; overflow:hidden; display:flex; flex-direction:column; box-shadow:0 6px 20px rgba(18,36,27,0.06);">
+          <div style="padding:14px 16px; display:flex; align-items:center; gap:10px; border-bottom:1px solid #EEF0ED; color:#12241B;">
+            <span style="color:#0B6B3A; font-size:16px;">←</span>
+            <div style="font-size:16px; font-weight:700;">Select your listing</div>
+          </div>
+          <div style="flex:1; padding:18px 16px; display:flex; flex-direction:column; gap:14px;">
+            <div style="font-size:13px; line-height:1.5; color:#5B6660;">We found 2 listings on meera.nair@gmail.com. Pick the one for your practice.</div>
+
+            <div style="border:2px solid #0EA04A; background:#F4FBF6; border-radius:12px; padding:14px; display:flex; gap:12px;">
+              <div style="width:18px; height:18px; border-radius:50%; border:5px solid #0EA04A; background:#FFFFFF; flex:none; margin-top:2px;"></div>
+              <div style="flex:1; display:flex; flex-direction:column; gap:5px;">
+                <div style="font-size:15px; font-weight:700; color:#12241B;">Nair Endocrine Clinic</div>
+                <div style="font-size:13px; line-height:1.45; color:#5B6660;">12 Greams Road, Thousand Lights, Chennai 600006</div>
+                <div style="display:flex; gap:6px; margin-top:4px; flex-wrap:wrap;">
+                  <div style="font-size:11px; font-weight:600; color:#0B6B3A; background:#E6F4EA; padding:3px 8px; border-radius:999px;">Verified</div>
+                  <div style="font-size:11px; font-weight:600; color:#4A544D; background:#EEF3EF; padding:3px 8px; border-radius:999px;">You are owner</div>
+                </div>
+              </div>
+            </div>
+
+            <div style="border:1px solid #DFE4E0; border-radius:12px; padding:14px; display:flex; gap:12px;">
+              <div style="width:18px; height:18px; border-radius:50%; border:1px solid #C8CFCA; flex:none; margin-top:2px;"></div>
+              <div style="flex:1; display:flex; flex-direction:column; gap:5px;">
+                <div style="font-size:15px; font-weight:700; color:#12241B;">Meera Nair — Diabetes Care</div>
+                <div style="font-size:13px; line-height:1.45; color:#5B6660;">4th Ave, Besant Nagar, Chennai 600090</div>
+                <div style="display:flex; gap:6px; margin-top:4px;">
+                  <div style="font-size:11px; font-weight:600; color:#8A5A00; background:#FDF3E2; padding:3px 8px; border-radius:999px;">Unverified</div>
+                </div>
+              </div>
+            </div>
+
+            <div style="border:1px dashed #C8CFCA; border-radius:12px; padding:14px; display:flex; gap:12px; align-items:center;">
+              <div style="width:18px; height:18px; border-radius:50%; border:1px solid #C8CFCA; flex:none;"></div>
+              <div style="font-size:14px; color:#3C463F;">None of these — create a new listing</div>
+            </div>
+          </div>
+          <div style="padding:16px; border-top:1px solid #EEF0ED;">
+            <div style="background:#0EA04A; color:#FFFFFF; font-size:15px; font-weight:700; padding:14px 0; border-radius:10px; text-align:center;">Upgrade with Ninto</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 6. Edit / prefilled details -->
+      <div style="display:flex; flex-direction:column; gap:10px;">
+        <div style="font-size:13px; font-weight:600; color:#3C463F;">5a · Add / edit details (prefilled)</div>
+        <div style="width:360px; height:780px; background:#FFFFFF; border:1px solid #DFE4E0; border-radius:14px; overflow:hidden; display:flex; flex-direction:column; box-shadow:0 6px 20px rgba(18,36,27,0.06);">
+          <div style="padding:14px 16px; display:flex; align-items:center; gap:10px; border-bottom:1px solid #EEF0ED;">
+            <span style="color:#0B6B3A; font-size:16px;">←</span>
+            <div style="font-size:16px; font-weight:700; color:#12241B;">Nair Endocrine Clinic</div>
+          </div>
+          <div style="flex:1; padding:16px; display:flex; flex-direction:column; gap:14px; overflow:hidden;">
+            <div style="background:#F4FBF6; border:1px solid #CDE7D6; border-radius:10px; padding:11px 13px; font-size:12px; line-height:1.5; color:#0B6B3A;">Filled from your Ninto onboarding. Edit anything that's changed.</div>
+
+            <div style="display:flex; flex-direction:column; gap:5px;">
+              <div style="font-size:11px; font-weight:700; letter-spacing:0.06em; color:#7A867F;">PRACTICE NAME</div>
+              <div style="border:1px solid #DFE4E0; border-radius:9px; padding:12px 13px; font-size:14px; color:#12241B;">Nair Endocrine Clinic</div>
+            </div>
+            <div style="display:flex; flex-direction:column; gap:5px;">
+              <div style="font-size:11px; font-weight:700; letter-spacing:0.06em; color:#7A867F;">CATEGORY</div>
+              <div style="border:1px solid #DFE4E0; border-radius:9px; padding:12px 13px; font-size:14px; color:#12241B; display:flex; justify-content:space-between;"><span>Endocrinologist</span><span style="color:#7A867F;">▾</span></div>
+            </div>
+            <div style="display:flex; flex-direction:column; gap:5px;">
+              <div style="font-size:11px; font-weight:700; letter-spacing:0.06em; color:#7A867F;">ADDRESS</div>
+              <div style="border:1px solid #DFE4E0; border-radius:9px; padding:12px 13px; font-size:14px; color:#12241B; line-height:1.45;">12 Greams Road, Thousand Lights, Chennai 600006</div>
+            </div>
+            <div style="display:flex; gap:12px;">
+              <div style="flex:1; display:flex; flex-direction:column; gap:5px;">
+                <div style="font-size:11px; font-weight:700; letter-spacing:0.06em; color:#7A867F;">PHONE</div>
+                <div style="border:1px solid #DFE4E0; border-radius:9px; padding:12px 13px; font-size:14px; color:#12241B;">+91 98407 22110</div>
+              </div>
+              <div style="flex:1; display:flex; flex-direction:column; gap:5px;">
+                <div style="font-size:11px; font-weight:700; letter-spacing:0.06em; color:#7A867F;">HOURS</div>
+                <div style="border:1px solid #DFE4E0; border-radius:9px; padding:12px 13px; font-size:14px; color:#12241B;">Mon–Sat ›</div>
+              </div>
+            </div>
+            <div style="display:flex; flex-direction:column; gap:5px;">
+              <div style="font-size:11px; font-weight:700; letter-spacing:0.06em; color:#7A867F;">WEBSITE</div>
+              <div style="border:1px solid #0EA04A; background:#F4FBF6; border-radius:9px; padding:12px 13px; font-size:14px; color:#12241B;">ninto.in/dr-meera-nair</div>
+              <div style="font-size:11px; color:#0B6B3A;">Your Ninto profile. Replace it if you have a clinic site.</div>
+            </div>
+            <div style="display:flex; align-items:center; gap:10px; padding-top:2px;">
+              <div style="width:38px; height:22px; border-radius:999px; background:#0EA04A; padding:2px; display:flex; justify-content:flex-end; align-items:center; flex:none;"><div style="width:18px; height:18px; border-radius:50%; background:#FFFFFF;"></div></div>
+              <div style="font-size:13px; line-height:1.4; color:#2C332E;">Keep this listing in sync with my Ninto profile</div>
+            </div>
+          </div>
+          <div style="padding:16px; border-top:1px solid #EEF0ED;">
+            <div style="background:#0EA04A; color:#FFFFFF; font-size:15px; font-weight:700; padding:14px 0; border-radius:10px; text-align:center;">Submit to Google</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 7. Unclaimed listing -->
+      <div style="display:flex; flex-direction:column; gap:10px;">
+        <div style="font-size:13px; font-weight:600; color:#3C463F;">5b · Unclaimed listing found</div>
+        <div style="width:360px; height:780px; background:#FFFFFF; border:1px solid #DFE4E0; border-radius:14px; overflow:hidden; display:flex; flex-direction:column; box-shadow:0 6px 20px rgba(18,36,27,0.06);">
+          <div style="padding:14px 16px; display:flex; align-items:center; gap:10px; border-bottom:1px solid #EEF0ED;">
+            <span style="color:#0B6B3A; font-size:16px;">←</span>
+            <div style="font-size:16px; font-weight:700; color:#12241B;">Claim your listing</div>
+          </div>
+          <div style="flex:1; padding:16px; display:flex; flex-direction:column; gap:14px;">
+            <div style="font-size:13px; line-height:1.5; color:#5B6660; text-wrap:pretty;">This place already exists on Google but nobody has claimed it. Claim it to control the details.</div>
+            <div style="border:1px solid #DFE4E0; border-radius:12px; overflow:hidden;">
+              <div style="height:150px; background:#E7EDE9; display:flex; align-items:center; justify-content:center; color:#7A867F; font-size:12px; border-bottom:1px solid #DFE4E0;">Map preview · 13.0604, 80.2496</div>
+              <div style="padding:14px; display:flex; flex-direction:column; gap:6px;">
+                <div style="font-size:16px; font-weight:700; color:#12241B;">Nair Endocrine Clinic</div>
+                <div style="font-size:13px; line-height:1.45; color:#5B6660;">12 Greams Road, Thousand Lights, Chennai 600006</div>
+                <div style="font-size:13px; color:#5B6660;">Endocrinologist · +91 98407 22110</div>
+                <div style="display:flex; gap:6px; margin-top:6px;">
+                  <div style="font-size:11px; font-weight:600; color:#8A5A00; background:#FDF3E2; padding:3px 8px; border-radius:999px;">Unclaimed</div>
+                  <div style="font-size:11px; font-weight:600; color:#4A544D; background:#EEF3EF; padding:3px 8px; border-radius:999px;">Matches your onboarding address</div>
+                </div>
+              </div>
+            </div>
+            <div style="background:#F4F6F4; border-radius:10px; padding:12px 14px; font-size:12px; line-height:1.5; color:#4A544D;">Claiming asks Google to confirm you represent this practice. Existing reviews and photos stay on the listing.</div>
+          </div>
+          <div style="padding:16px; border-top:1px solid #EEF0ED; display:flex; flex-direction:column; gap:8px;">
+            <div style="background:#0EA04A; color:#FFFFFF; font-size:15px; font-weight:700; padding:14px 0; border-radius:10px; text-align:center;">Claim this listing</div>
+            <div style="color:#5B6660; font-size:14px; font-weight:600; padding:8px 0; text-align:center;">Not my practice</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 8. Create new -->
+      <div style="display:flex; flex-direction:column; gap:10px;">
+        <div style="font-size:13px; font-weight:600; color:#3C463F;">5c · Create a new listing</div>
+        <div style="width:360px; height:780px; background:#FFFFFF; border:1px solid #DFE4E0; border-radius:14px; overflow:hidden; display:flex; flex-direction:column; box-shadow:0 6px 20px rgba(18,36,27,0.06);">
+          <div style="padding:14px 16px; display:flex; align-items:center; gap:10px; border-bottom:1px solid #EEF0ED;">
+            <span style="color:#0B6B3A; font-size:16px;">←</span>
+            <div style="font-size:16px; font-weight:700; color:#12241B;">New listing</div>
+            <div style="margin-left:auto; font-size:12px; color:#7A867F;">Step 1 of 2</div>
+          </div>
+          <div style="flex:1; padding:16px; display:flex; flex-direction:column; gap:14px; overflow:hidden;">
+            <div style="font-size:13px; line-height:1.5; color:#5B6660;">No listing found for your practice. Ninto will create one and manage it for you.</div>
+            <div style="display:flex; flex-direction:column; gap:5px;">
+              <div style="font-size:11px; font-weight:700; letter-spacing:0.06em; color:#7A867F;">PRACTICE NAME</div>
+              <div style="border:1px solid #DFE4E0; border-radius:9px; padding:12px 13px; font-size:14px; color:#12241B;">Nair Endocrine Clinic</div>
+            </div>
+            <div style="display:flex; flex-direction:column; gap:5px;">
+              <div style="font-size:11px; font-weight:700; letter-spacing:0.06em; color:#7A867F;">CATEGORY</div>
+              <div style="border:1px solid #DFE4E0; border-radius:9px; padding:12px 13px; font-size:14px; color:#12241B; display:flex; justify-content:space-between;"><span>Endocrinologist</span><span style="color:#7A867F;">▾</span></div>
+            </div>
+            <div style="display:flex; flex-direction:column; gap:5px;">
+              <div style="font-size:11px; font-weight:700; letter-spacing:0.06em; color:#7A867F;">ADDRESS</div>
+              <div style="border:1px solid #DFE4E0; border-radius:9px; padding:12px 13px; font-size:14px; color:#12241B; line-height:1.45;">12 Greams Road, Thousand Lights, Chennai 600006</div>
+              <div style="height:110px; border-radius:9px; background:#E7EDE9; display:flex; align-items:center; justify-content:center; color:#7A867F; font-size:12px; margin-top:4px;">Drag the pin to your entrance</div>
+            </div>
+            <div style="display:flex; flex-direction:column; gap:5px;">
+              <div style="font-size:11px; font-weight:700; letter-spacing:0.06em; color:#7A867F;">WEBSITE</div>
+              <div style="border:1px solid #0EA04A; background:#F4FBF6; border-radius:9px; padding:12px 13px; font-size:14px; color:#12241B;">ninto.in/dr-meera-nair</div>
+              <div style="font-size:11px; color:#0B6B3A;">From your Ninto profile.</div>
+            </div>
+          </div>
+          <div style="padding:16px; border-top:1px solid #EEF0ED;">
+            <div style="background:#0EA04A; color:#FFFFFF; font-size:15px; font-weight:700; padding:14px 0; border-radius:10px; text-align:center;">Continue</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ROW 3: verification + manage -->
+  <div style="display:flex; flex-direction:column; gap:18px;">
+    <div style="font-size:13px; font-weight:700; letter-spacing:0.1em; color:#7A867F;">STEP 3 · VERIFICATION HANDOFF &amp; MANAGEMENT</div>
+    <div style="display:flex; flex-wrap:wrap; gap:28px;">
+
+      <!-- 9. Submitted -->
+      <div style="display:flex; flex-direction:column; gap:10px;">
+        <div style="font-size:13px; font-weight:600; color:#3C463F;">6 · Submitted — Google verifies next</div>
+        <div style="width:360px; height:780px; background:#FFFFFF; border:1px solid #DFE4E0; border-radius:14px; overflow:hidden; display:flex; flex-direction:column; box-shadow:0 6px 20px rgba(18,36,27,0.06);">
+          <div style="background:#0E4A32; padding:34px 20px 28px; display:flex; flex-direction:column; gap:12px;">
+            <div style="width:44px; height:44px; border-radius:50%; background:#0EA04A; color:#FFFFFF; font-size:22px; font-weight:700; display:flex; align-items:center; justify-content:center;">✓</div>
+            <div style="font-size:22px; font-weight:700; color:#FFFFFF; line-height:1.25;">Sent to Google</div>
+            <div style="font-size:14px; line-height:1.5; color:rgba(255,255,255,0.8); text-wrap:pretty;">Nair Endocrine Clinic is submitted. Google now needs to confirm you represent this practice.</div>
+          </div>
+          <div style="flex:1; min-height:0; padding:18px; display:flex; flex-direction:column; gap:14px;">
+            <div style="display:flex; flex-direction:column; gap:8px;">
+              <div style="font-size:15px; font-weight:700; color:#12241B;">How Google will reach you</div>
+              <div style="font-size:13px; line-height:1.5; color:#5B6660; text-wrap:pretty;">Google picks the method for your listing — SMS, email, a phone call, or a postcard to your clinic address. Whichever it offers, you'll get a code.</div>
+            </div>
+            <div style="display:flex; flex-direction:column; gap:8px;">
+              <div style="border:1px solid #DFE4E0; border-radius:9px; padding:9px 13px; display:flex; gap:10px; align-items:center;"><div style="width:24px; height:24px; border-radius:7px; background:#EEF3EF; flex:none;"></div><div style="font-size:13px; color:#2C332E;">SMS to +91 98407 22110</div></div>
+              <div style="border:1px solid #DFE4E0; border-radius:9px; padding:9px 13px; display:flex; gap:10px; align-items:center;"><div style="width:24px; height:24px; border-radius:7px; background:#EEF3EF; flex:none;"></div><div style="font-size:13px; color:#2C332E;">Email to meera.nair@gmail.com</div></div>
+              <div style="border:1px solid #DFE4E0; border-radius:9px; padding:9px 13px; display:flex; gap:10px; align-items:center;"><div style="width:24px; height:24px; border-radius:7px; background:#EEF3EF; flex:none;"></div><div style="font-size:13px; color:#2C332E;">Automated voice call</div></div>
+              <div style="border:1px solid #DFE4E0; border-radius:9px; padding:9px 13px; display:flex; gap:10px; align-items:center;"><div style="width:24px; height:24px; border-radius:7px; background:#EEF3EF; flex:none;"></div><div style="font-size:13px; color:#2C332E;">Postcard to your clinic address</div></div>
+            </div>
+            <div style="background:#F4F6F4; border-radius:10px; padding:12px 14px; font-size:12px; line-height:1.5; color:#4A544D;">SMS, email, and calls usually arrive within minutes. A postcard can take up to 14 days. Enter the code in Manage listing when it arrives.</div>
+          </div>
+          <div style="padding:16px; border-top:1px solid #EEF0ED; display:flex; flex-direction:column; gap:8px;">
+            <div style="background:#0EA04A; color:#FFFFFF; font-size:15px; font-weight:700; padding:14px 0; border-radius:10px; text-align:center;">Go to Manage listing</div>
+            <div style="color:#5B6660; font-size:14px; font-weight:600; padding:8px 0; text-align:center;">Back to profile</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 10. Manage -->
+      <div style="display:flex; flex-direction:column; gap:10px;">
+        <div style="font-size:13px; font-weight:600; color:#3C463F;">7 · Manage Google Business Profile</div>
+        <div style="width:360px; height:780px; background:#F7F8F7; border:1px solid #DFE4E0; border-radius:14px; overflow:hidden; display:flex; flex-direction:column; box-shadow:0 6px 20px rgba(18,36,27,0.06);">
+          <div style="padding:14px 16px; background:#FFFFFF; display:flex; align-items:center; gap:10px; border-bottom:1px solid #EEF0ED;">
+            <span style="color:#0B6B3A; font-size:16px;">←</span>
+            <div style="font-size:16px; font-weight:700; color:#12241B;">Manage listing</div>
+          </div>
+          <div style="flex:1; padding:16px; display:flex; flex-direction:column; gap:14px; overflow:hidden;">
+
+            <div style="background:#FFFFFF; border:1px solid #DFE4E0; border-radius:12px; padding:16px; display:flex; flex-direction:column; gap:14px;">
+              <div style="display:flex; align-items:center; justify-content:space-between;">
+                <div style="font-size:15px; font-weight:700; color:#12241B;">Nair Endocrine Clinic</div>
+                <div style="font-size:11px; font-weight:600; color:#8A5A00; background:#FDF3E2; padding:4px 9px; border-radius:999px;">Awaiting Google</div>
+              </div>
+              <div style="display:flex; flex-direction:column; gap:0;">
+                <div style="display:flex; gap:11px;">
+                  <div style="display:flex; flex-direction:column; align-items:center; width:16px;"><div style="width:12px; height:12px; border-radius:50%; background:#0EA04A;"></div><div style="width:2px; flex:1; background:#0EA04A; min-height:26px;"></div></div>
+                  <div style="padding-bottom:14px;"><div style="font-size:13px; font-weight:600; color:#12241B;">Submitted</div><div style="font-size:12px; color:#7A867F;">28 Mar 2026</div></div>
+                </div>
+                <div style="display:flex; gap:11px;">
+                  <div style="display:flex; flex-direction:column; align-items:center; width:16px;"><div style="width:12px; height:12px; border-radius:50%; background:#FFFFFF; border:3px solid #0EA04A;"></div><div style="width:2px; flex:1; background:#DFE4E0; min-height:26px;"></div></div>
+                  <div style="padding-bottom:14px;"><div style="font-size:13px; font-weight:600; color:#12241B;">Google verification in progress</div><div style="font-size:12px; color:#7A867F;">Postcard sent · expect by 11 Apr</div></div>
+                </div>
+                <div style="display:flex; gap:11px;">
+                  <div style="width:16px; display:flex; justify-content:center;"><div style="width:12px; height:12px; border-radius:50%; background:#DFE4E0;"></div></div>
+                  <div><div style="font-size:13px; font-weight:600; color:#7A867F;">Live on Search and Maps</div></div>
+                </div>
+              </div>
+              <div style="border:1px solid #0EA04A; color:#0B6B3A; font-size:14px; font-weight:700; padding:11px 0; border-radius:9px; text-align:center;">Enter verification code</div>
+            </div>
+
+            <div style="background:#FFFFFF; border:1px solid #DFE4E0; border-radius:12px; overflow:hidden;">
+              <div style="padding:13px 15px; font-size:11px; font-weight:700; letter-spacing:0.06em; color:#7A867F; border-bottom:1px solid #EEF0ED;">LISTING DETAILS</div>
+              <div style="padding:13px 15px; display:flex; justify-content:space-between; gap:12px; border-bottom:1px solid #EEF0ED;"><div style="font-size:13px; color:#5B6660;">Address</div><div style="font-size:13px; color:#12241B; text-align:right;">12 Greams Road, Chennai</div></div>
+              <div style="padding:13px 15px; display:flex; justify-content:space-between; gap:12px; border-bottom:1px solid #EEF0ED;"><div style="font-size:13px; color:#5B6660;">Phone</div><div style="font-size:13px; color:#12241B;">+91 98407 22110</div></div>
+              <div style="padding:13px 15px; display:flex; justify-content:space-between; gap:12px; border-bottom:1px solid #EEF0ED;"><div style="font-size:13px; color:#5B6660;">Website</div><div style="font-size:13px; color:#0B6B3A;">ninto.in/dr-meera-nair</div></div>
+              <div style="padding:13px 15px; display:flex; justify-content:space-between; gap:12px; border-bottom:1px solid #EEF0ED;"><div style="font-size:13px; color:#5B6660;">Hours</div><div style="font-size:13px; color:#12241B;">Mon–Sat, 9:00–17:00</div></div>
+              <div style="padding:13px 15px; font-size:14px; font-weight:700; color:#0B6B3A;">Edit details</div>
+            </div>
+
+            <div style="background:#FFFFFF; border:1px solid #DFE4E0; border-radius:12px; padding:15px; display:flex; flex-direction:column; gap:8px;">
+              <div style="font-size:11px; font-weight:700; letter-spacing:0.06em; color:#7A867F;">NINTO'S ACCESS</div>
+              <div style="font-size:13px; line-height:1.5; color:#4A544D;">Ninto is a manager on this listing and keeps it in sync with your profile.</div>
+              <div style="align-self:flex-start; margin-top:6px; border:1px solid #D9534F; color:#C0392B; font-size:13px; font-weight:700; padding:9px 14px; border-radius:9px;">Remove Ninto's access</div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- 11. Purge dialog -->
+      <div style="display:flex; flex-direction:column; gap:10px;">
+        <div style="font-size:13px; font-weight:600; color:#3C463F;">7c · Remove access confirmation</div>
+        <div style="width:360px; height:780px; background:#12241B; border:1px solid #DFE4E0; border-radius:14px; overflow:hidden; display:flex; align-items:center; justify-content:center; padding:20px; box-shadow:0 6px 20px rgba(18,36,27,0.06);">
+          <div style="background:#FFFFFF; border-radius:16px; padding:22px; display:flex; flex-direction:column; gap:14px; width:100%;">
+            <div style="font-size:19px; font-weight:700; color:#12241B; line-height:1.3;">Remove Ninto's access?</div>
+            <div style="font-size:14px; line-height:1.55; color:#4A544D; text-wrap:pretty;">Your listing stays on Google and you remain the owner. Ninto will stop syncing details, and reviews will no longer appear in your inbox.</div>
+            <div style="background:#F4F6F4; border-radius:10px; padding:12px 14px; font-size:12px; line-height:1.5; color:#4A544D;">Verification is still pending. If you remove access now, you'll need to finish verification in Google Business Profile yourself.</div>
+            <div style="display:flex; flex-direction:column; gap:8px; margin-top:2px;">
+              <div style="background:#C0392B; color:#FFFFFF; font-size:15px; font-weight:700; padding:13px 0; border-radius:10px; text-align:center;">Remove access</div>
+              <div style="color:#3C463F; font-size:15px; font-weight:600; padding:11px 0; text-align:center;">Keep Ninto as manager</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</section>
+</x-dc>
+</body>
+</html>
