@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>Ninto -- Google Business Profile (feasibility)</title>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <style>
+      /* Palette lifted from ../audit/design/Ninto GBP Setup Flow.dc.html. */
+      :root {
+        --ink: #12241B;
+        --body-text: #2C332E;
+        --text-2: #4A544D;
+        --muted: #5B6660;
+        --faint: #7A867F;
+        --chrome: #0E4A32;
+        --accent: #0EA04A;
+        --accent-dark: #0B6B3A;
+        --accent-soft: #E6F4EA;
+        --tint: #F4FBF6;
+        --tint-border: #CDE7D6;
+        --panel: #F4F6F4;
+        --divider: #EEF0ED;
+        --border: #DFE4E0;
+        --warn-bg: #FFF6E5;
+        --warn-border: #F1D9A6;
+        --warn-ink: #7A5410;
+        --danger: #B3261E;
+        --danger-soft: #FCEDEC;
+      }
+      body { margin: 0; background: #F1F3F0; font-family: system-ui, -apple-system, "Segoe UI", "Helvetica Neue", Arial, sans-serif; -webkit-font-smoothing: antialiased; display: flex; flex-direction: column; align-items: center; padding: 24px 16px 48px; color: var(--ink); }
+      .page-head { max-width: 480px; text-align: center; margin-bottom: 16px; }
+      .page-head h1 { font-size: 16px; margin: 0 0 6px; }
+      .page-head p { font-size: 12px; line-height: 1.55; color: rgba(0,0,0,.55); margin: 0; }
+      .page-head a { color: var(--accent-dark); }
+
+      .setup, .devtools { width: 360px; max-width: 100%; margin-bottom: 14px; }
+      .setup summary, .devtools summary { font-size: 11.5px; font-weight: 600; color: var(--muted); cursor: pointer; padding: 6px 2px; }
+      .setup-body { background: #fff; border: 1px solid rgba(0,0,0,.08); border-radius: 10px; padding: 12px; margin-top: 4px; display: flex; flex-direction: column; gap: 10px; }
+      .setup-body h3 { font-size: 11px; letter-spacing: .08em; color: var(--faint); margin: 6px 0 0; }
+      .setup label { display: block; font-size: 11px; font-weight: 600; color: var(--muted); letter-spacing: .03em; margin-bottom: 4px; }
+      .setup input, .setup select { font: inherit; font-size: 12.5px; padding: 7px 9px; width: 100%; box-sizing: border-box; border: 1px solid #DDE0DC; border-radius: 7px; background: #fff; color: var(--ink); }
+      .setup .row { display: flex; gap: 8px; }
+      .setup .row > div { flex: 1; min-width: 0; }
+      .setup .check { display: flex; gap: 8px; align-items: flex-start; font-size: 12px; font-weight: 600; color: var(--ink); }
+      .setup .check input { width: auto; margin-top: 2px; }
+      .setup p, .devtools p { font-size: 11px; color: var(--faint); line-height: 1.55; margin: 0; }
+      .setup code, .devtools code { background: var(--panel); padding: 1px 4px; border-radius: 4px; }
+      .devtools button { font: inherit; font-size: 12px; font-weight: 600; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border); background: #fff; color: var(--ink); cursor: pointer; }
+
+      .mode-pill { display: inline-block; font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 999px; margin-top: 8px; }
+      .mode-pill.dry { background: var(--accent-soft); color: var(--accent-dark); }
+      .mode-pill.live { background: var(--danger-soft); color: var(--danger); }
+
+      .frame { width: 360px; max-width: 100%; min-height: 680px; background: #fff; border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 6px 20px rgba(18,36,27,.06); overflow: hidden; display: flex; flex-direction: column; position: relative; }
+
+      .topbar { padding: 14px 16px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--divider); flex: none; }
+      .topbar .back { color: var(--accent-dark); font-size: 16px; font-weight: 700; }
+      .topbar .title { font-size: 16px; font-weight: 700; color: var(--ink); }
+      .topbar .step { margin-left: auto; font-size: 12px; color: var(--faint); }
+      .body { flex: 1; padding: 18px 16px; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; }
+      .h1 { font-size: 20px; font-weight: 700; line-height: 1.25; }
+      .lede { font-size: 13px; line-height: 1.5; color: var(--muted); }
+      [data-action] { cursor: pointer; }
+
+      .btn-primary { background: var(--accent); color: #fff; font: inherit; font-size: 15px; font-weight: 700; padding: 14px 0; border-radius: 10px; text-align: center; border: none; width: 100%; cursor: pointer; }
+      .btn-primary:disabled { background: #C8CFCA; cursor: not-allowed; }
+      .btn-small { align-self: flex-start; background: var(--accent); color: #fff; font: inherit; font-size: 13px; font-weight: 700; padding: 9px 16px; border-radius: 8px; border: none; cursor: pointer; }
+      .btn-outline { font: inherit; font-size: 14px; font-weight: 700; padding: 12px 0; border-radius: 10px; text-align: center; border: 1px solid var(--border); background: #fff; color: var(--ink); width: 100%; cursor: pointer; }
+      .btn-danger { background: var(--danger); color: #fff; font: inherit; font-size: 15px; font-weight: 700; padding: 14px 0; border-radius: 10px; border: none; width: 100%; cursor: pointer; }
+      .link-muted { color: var(--muted); font-size: 14px; font-weight: 600; padding: 10px 0; text-align: center; cursor: pointer; }
+      .link-accent { color: var(--accent-dark); font-size: 14px; font-weight: 600; padding: 10px 0; text-align: center; cursor: pointer; }
+      .fineprint { font-size: 11px; color: var(--faint); text-align: center; line-height: 1.5; }
+
+      .card-tint { border: 1px solid var(--tint-border); background: var(--tint); border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+      .note { background: var(--panel); border-radius: 10px; padding: 12px 14px; font-size: 12px; line-height: 1.5; color: var(--text-2); }
+      .warn { background: var(--warn-bg); border: 1px solid var(--warn-border); color: var(--warn-ink); border-radius: 10px; padding: 12px 14px; font-size: 12px; line-height: 1.5; }
+      .error { background: var(--danger-soft); color: var(--danger); border-radius: 10px; padding: 12px 14px; font-size: 12px; line-height: 1.5; }
+      .tick { width: 18px; height: 18px; border-radius: 50%; background: var(--accent-soft); color: var(--accent-dark); font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex: none; margin-top: 1px; }
+      .tick.solid { background: var(--accent); color: #fff; }
+      .benefit { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; line-height: 1.45; color: var(--body-text); }
+
+      .badge { font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 999px; display: inline-block; white-space: nowrap; flex: none; }
+      .badge.ok { background: var(--accent-soft); color: var(--accent-dark); }
+      .badge.pending { background: var(--warn-bg); color: var(--warn-ink); }
+      .badge.grey { background: var(--panel); color: var(--muted); }
+      .badge.red { background: var(--danger-soft); color: var(--danger); }
+
+      .listing { border: 1px solid var(--border); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 6px; }
+      .listing.selected { border: 2px solid var(--accent); padding: 13px; background: var(--tint); }
+      .listing .name { font-size: 15px; font-weight: 700; }
+      .listing .addr { font-size: 13px; color: var(--muted); line-height: 1.4; }
+      .listing .badges { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 2px; }
+
+      .field label { display: block; font-size: 11px; font-weight: 700; letter-spacing: .08em; color: var(--faint); margin-bottom: 6px; }
+      .field input, .field select { font: inherit; font-size: 14px; padding: 11px 12px; width: 100%; box-sizing: border-box; border: 1px solid var(--border); border-radius: 8px; background: #fff; color: var(--ink); }
+      .field .hint { font-size: 12px; color: var(--faint); margin-top: 5px; line-height: 1.4; }
+      .field .google-has { font-size: 12px; color: var(--warn-ink); margin-top: 5px; }
+      .toggle-row { display: flex; gap: 10px; align-items: center; font-size: 14px; color: var(--body-text); }
+
+      .map { height: 120px; border-radius: 10px; background: repeating-linear-gradient(45deg, #E7EDE9, #E7EDE9 10px, #EEF3EF 10px, #EEF3EF 20px); display: flex; align-items: center; justify-content: center; font-size: 12px; color: var(--muted); text-align: center; padding: 0 12px; }
+      .method { border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; display: flex; gap: 10px; align-items: center; font-size: 14px; }
+      .method.selected { border: 2px solid var(--accent); padding: 11px 13px; background: var(--tint); }
+      .method input { margin: 0; }
+
+      .timeline { display: flex; flex-direction: column; gap: 0; }
+      .tl-item { display: flex; gap: 12px; }
+      .tl-rail { display: flex; flex-direction: column; align-items: center; }
+      .tl-dot { width: 12px; height: 12px; border-radius: 50%; background: #C8CFCA; margin-top: 3px; flex: none; }
+      .tl-dot.done { background: var(--accent); }
+      .tl-dot.now { background: #fff; border: 3px solid var(--accent); width: 8px; height: 8px; }
+      .tl-line { width: 2px; flex: 1; background: var(--divider); min-height: 18px; }
+      .tl-text { padding-bottom: 14px; }
+      .tl-text .t { font-size: 14px; font-weight: 700; }
+      .tl-text .s { font-size: 12px; color: var(--muted); margin-top: 2px; }
+      .section-label { font-size: 11px; font-weight: 700; letter-spacing: .08em; color: var(--faint); }
+      .kv { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; padding: 8px 0; border-bottom: 1px solid var(--divider); }
+      .kv .k { color: var(--muted); }
+      .kv .v { color: var(--ink); text-align: right; }
+      .review { border-bottom: 1px solid var(--divider); padding: 8px 0; font-size: 13px; line-height: 1.45; }
+
+      .sheet-backdrop { position: absolute; inset: 0; background: rgba(18,36,27,.55); display: flex; flex-direction: column; justify-content: flex-end; }
+      .sheet { background: #fff; border-radius: 18px 18px 0 0; padding: 10px 20px 22px; display: flex; flex-direction: column; gap: 14px; }
+      .grabber { width: 42px; height: 4px; border-radius: 999px; background: var(--border); align-self: center; }
+
+      /* Ninto app chrome, for screens 1-2 (home feed + profile). */
+      .appbar { background: var(--chrome); padding: 14px 16px; display: flex; align-items: center; gap: 12px; }
+      .search { flex: 1; height: 32px; border-radius: 8px; background: rgba(255,255,255,.12); display: flex; align-items: center; padding: 0 12px; color: rgba(255,255,255,.75); font-size: 13px; }
+      .tabs { display: flex; background: var(--chrome); padding: 0 16px; }
+      .tabs div { flex: 1; text-align: center; padding: 12px 0; color: rgba(255,255,255,.6); font-size: 14px; }
+      .tabs div.on { color: #fff; font-weight: 600; border-bottom: 3px solid #fff; }
+      .post { padding: 16px; border-bottom: 1px solid var(--divider); display: flex; flex-direction: column; gap: 8px; }
+      .bottomnav { display: flex; border-top: 1px solid #E5E9E6; padding: 8px 0 10px; flex: none; }
+      .bottomnav div { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 10px; color: var(--faint); }
+      .bottomnav i { width: 18px; height: 18px; border-radius: 4px; background: #C8CFCA; display: block; }
+      .bottomnav .on { color: var(--accent-dark); font-weight: 700; }
+      .bottomnav .on i { background: var(--accent); }
+
+      .diagnostics-wrap { width: 360px; max-width: 100%; margin-top: 14px; }
+      .diagnostics-wrap summary { font-size: 11px; font-weight: 600; color: var(--faint); cursor: pointer; }
+      #diagnostics { background: #171717; color: #d8f5e3; border-radius: 8px; padding: 0.7rem; font-family: ui-monospace, monospace; font-size: 0.74rem; white-space: pre-wrap; word-break: break-word; max-height: 260px; overflow-y: auto; margin-top: 6px; }
+    </style>
+  </head>
+  <body>
+    <div class="page-head">
+      <h1>Ninto -- Google Business Profile (feasibility spike, NINTO-550)</h1>
+      <p>Real app, not a mockup -- tap Continue with Google, pick a Google account in the real consent
+        popup, and work with that account's real Business Profile listings. Screens follow the
+        "1A -- Google Business Profile -- setup &amp; management" design. No backend -- everything
+        happens in this browser tab. See <code>../audit/gbp-feasibility-plan.md</code>.
+        <a href="../">All POCs</a></p>
+    </div>
+
+    <details class="setup" id="setup">
+      <summary>Feasibility spike setup (not part of the design -- dev only)</summary>
+      <div class="setup-body">
+        <div>
+          <label for="client-id">Google OAuth Web Client ID</label>
+          <input id="client-id" type="text" placeholder="xxxxxxxxxx.apps.googleusercontent.com" />
+        </div>
+        <p>
+          Defaults to the same <strong>Web application</strong> client as the YouTube spike (hardcoded
+          in <code>app.js</code>, not a secret). Its Cloud project must be approved for the Business
+          Profile APIs (quota must read 300 QPM, not 0). An override here is saved to this browser's
+          localStorage. Its Authorized JavaScript origins must list every origin this page is opened
+          from (<code>http://localhost:8000</code>, and the deployed origin with no path), and its
+          consent screen must list <code>.../auth/business.manage</code> and
+          <code>.../auth/userinfo.email</code>, with your account added as a test user.
+        </p>
+
+        <label class="check"><input id="dry-run" type="checkbox" checked /> Dry-run writes (recommended)</label>
+        <p>
+          On: edits and creates are sent with <code>validateOnly=true</code> (Google validates the
+          payload, nothing changes), and writes that have no dry-run form -- claim, verify, enter
+          code, invite or remove a manager -- are skipped and logged. Turn off only against a test
+          listing, never a real HWP's live listing.
+        </p>
+        <span id="mode-pill" class="mode-pill dry">DRY RUN</span>
+
+        <div>
+          <label for="manager-email">Ninto manager Google account (optional)</label>
+          <input id="manager-email" type="email" placeholder="gbp-manager@byepo.in" />
+        </div>
+        <p>Invited as <code>MANAGER</code> on the listing from Manage listing (model B in the plan).</p>
+
+        <h3>NINTO ONBOARDING (stands in for the HWP's real profile)</h3>
+        <div class="row">
+          <div><label for="ob-doctor">Name</label><input id="ob-doctor" data-ob="doctorName" /></div>
+          <div><label for="ob-practice">Practice name</label><input id="ob-practice" data-ob="practiceName" /></div>
+        </div>
+        <div><label for="ob-specialty">Specialty</label><select id="ob-specialty" data-ob="specialty"></select></div>
+        <div><label for="ob-line1">Address line 1</label><input id="ob-line1" data-ob="addressLine1" /></div>
+        <div><label for="ob-line2">Address line 2 / area</label><input id="ob-line2" data-ob="addressLine2" /></div>
+        <div class="row">
+          <div><label for="ob-city">City</label><input id="ob-city" data-ob="city" /></div>
+          <div><label for="ob-state">State</label><input id="ob-state" data-ob="state" /></div>
+          <div><label for="ob-pin">PIN code</label><input id="ob-pin" data-ob="postalCode" /></div>
+        </div>
+        <div class="row">
+          <div><label for="ob-phone">Phone</label><input id="ob-phone" data-ob="phone" /></div>
+          <div><label for="ob-url">Ninto profile URL</label><input id="ob-url" data-ob="profileUrl" /></div>
+        </div>
+        <div class="row">
+          <div><label for="ob-lat">Latitude</label><input id="ob-lat" data-ob="lat" /></div>
+          <div><label for="ob-lng">Longitude</label><input id="ob-lng" data-ob="lng" /></div>
+        </div>
+        <div class="row">
+          <div><label for="ob-open">Opens</label><input id="ob-open" type="time" data-ob="opens" /></div>
+          <div><label for="ob-close">Closes</label><input id="ob-close" type="time" data-ob="closes" /></div>
+          <div><label for="ob-days">Days</label>
+            <select id="ob-days" data-ob="days">
+              <option value="MON-FRI">Mon–Fri</option>
+              <option value="MON-SAT">Mon–Sat</option>
+              <option value="MON-SUN">Every day</option>
+            </select>
+          </div>
+        </div>
+        <p>Saved to this browser. Prefills the edit and create screens.</p>
+      </div>
+    </details>
+
+    <div class="frame" id="frame"></div>
+
+    <details class="devtools">
+      <summary>Dev tools (not part of the design)</summary>
+      <div class="setup-body">
+        <button id="build-mapping" type="button">Build specialty → category mapping</button>
+        <p>Runs <code>categories.list</code> (regionCode <code>IN</code>) once per Ninto specialty,
+          paced under the 300 QPM limit, and logs the full mapping table as JSON in Diagnostics.
+          Needs a signed-in session.</p>
+        <button id="reset" type="button">Sign out and start over</button>
+      </div>
+    </details>
+
+    <details class="diagnostics-wrap" open>
+      <summary>Diagnostics (latency + per-minute call count, for this feasibility check only)</summary>
+      <div id="diagnostics">(nothing yet)</div>
+    </details>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

@@ -1,8 +1,24 @@
-# youtube-poc.netlify.app -- publishes the static per-visitor OAuth app
-# (youtube-feasibility/index.html + app.js) directly, no build step. This
-# app needs no backend: server.mjs (Express) is dev-only and won't run on
-# Netlify -- its /adc route (Application Default Credentials demo) is not
-# reachable from this deploy, only the default "/" page is.
+# One Netlify site serves every POC from the repo root, each under its own
+# folder (/gbp-feasibility/, /youtube-feasibility/, /analytics-hub/, ...),
+# with index.html at the root as the hub linking them. No build step: the
+# spikes are static pages (their server.mjs is local-dev only).
+#
+# A spike's OAuth Web Client must list this site's origin (no path) under
+# Authorized JavaScript origins, or Google rejects the popup with
+# origin_mismatch.
 [build]
-  base = "youtube-feasibility"
   publish = "."
+
+# Plans, design sources and editor config live in the repo but aren't meant
+# to be served.
+[[redirects]]
+  from = "/audit/*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/.claude/*"
+  to = "/404.html"
+  status = 404
+  force = true

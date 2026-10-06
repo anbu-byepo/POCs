@@ -13,6 +13,81 @@ Design reference: `audit/design/Ninto GBP Setup Flow.dc.html` (pulled in from th
 Claude Design link, "1A — Google Business Profile — setup & management"). It shows 11 screens in 3
 steps, walked through screen-by-screen below.
 
+## What was built: `gbp-feasibility/` (2026-10-06)
+
+Phase 1 below is implemented as a working app, served at `/gbp-feasibility/` on the shared POCs
+Netlify site (the repo root's `index.html` is now a hub that links every POC). Every screen calls
+the real Business Profile APIs; nothing is mocked in the app.
+
+```
+gbp-feasibility/
+  package.json
+  index.html      -- frame + setup panel (Client ID, dry-run, Ninto manager, onboarding) + dev tools
+  app.js          -- OAuth (business.manage), every API call, all screens, diagnostics
+  specialties.js  -- Ninto's 259 specialties, copied from the ninto repo's postVocabulary.js
+  server.mjs      -- static file server, local dev only
+```
+
+What each screen does:
+
+- **1–2:** the home-feed and profile prompts. The profile card reflects the stored listing state:
+  not set up, unverified, awaiting Google, live, or removed.
+- **3:** the benefits sheet, with "and questions" removed from the copy. **4** is Google's real
+  popup with `select_account`. If the tester unticks `business.manage`, the app stops and says so.
+- **5a:** `accounts.list` → `locations.list` → `getVoiceOfMerchantState` + `admins.list` for the
+  Verified/Unverified and owner badges. The edit screen is prefilled from the onboarding fields in
+  the setup panel. Wherever Google's current value differs, the field shows it ("On Google now:
+  …"). The category comes from `categories.list` using the HWP's specialty, and can also be
+  searched by hand. Submitting calls `locations.patch`, then `getGoogleUpdated`.
+- **5b:** `googleLocations.search` using the onboarding name, address and phone, stepping through
+  each match. A claimable match leads to claim (`locations.create` with the match's location). A
+  match someone else manages gets the new "Request access on Google" state, which opens
+  `requestAdminRightsUri`.
+- **5c:** step 1 (name, category, address, coordinates in place of the Maps pin, website) → step 2
+  (phone, hours) → `locations.create`.
+- **6:** `getVoiceOfMerchantState` first. A listing that's already verified, or already pending,
+  goes straight to Manage. Otherwise `fetchVerificationOptions` drives a **method picker** (only the
+  methods Google offers) → `verify` → "Sent to Google".
+- **7:** `locations.get`, a timeline built from `verifications.list` (the expected date is our own
+  estimate), PIN entry via `verifications.complete`, any pending Google review from
+  `getGoogleUpdated`, a v4 `reviews.list` smoke test, the admin roster, and "Invite Ninto as
+  manager" (`admins.create`, role `MANAGER`).
+- **7c:** `admins.delete` on the Ninto manager seat, if there is one, then token revoke.
+
+**Dry run is on by default.** `locations.patch` and `locations.create` (claim and new) are sent
+with `validateOnly=true`. Writes that have no validate-only form (`verify`, `verifications.complete`,
+`admins.create`, `admins.delete`) are skipped and logged. Turn dry run off in the setup panel only
+against the test listings in the credentials checklist.
+
+**Dev tools:** "Build specialty → category mapping" runs `categories.list` for all 259 Ninto
+specialties at about 240 QPM and logs the mapping table as JSON. This is plan step 7's
+deliverable. Diagnostics show latency per call, a rolling per-minute call count against 300 QPM,
+and a plain explanation for a 0-QPM project, a disabled API, or a missing scope.
+
+**Checked before handoff:** a headless Chrome run through every screen and both branches (5a →
+edit → verify → sent → manage → code entry → remove, and 5b claimable → managed elsewhere → 5c
+step 1 → step 2 → dry-run result). Google Identity Services and the Google APIs were stubbed. There
+were no page errors, and in dry-run mode no write went out without `validateOnly`. Nothing in this
+run touched Google: proving the API behaviour live still needs the approved project and an OAuth
+client (see the credentials checklist).
+
+**Known limit found while building:** once a manager invite is accepted, `admins.list` returns the
+manager's name rather than their email. The spike matches the Ninto manager by email, so it only
+recognises that manager while the invite is pending. The real integration should match on the
+`account` field of Ninto's own GBP account instead.
+
+### Running it
+
+1. Fill in the credentials checklist below. You need the Web Client ID, the consent screen with
+   `business.manage` and `userinfo.email`, and test users.
+2. Local: `cd gbp-feasibility && pnpm install && pnpm run serve`, then open
+   `http://localhost:8000`. Or serve the whole repo (`python3 -m http.server 8000` from the root)
+   and open `/gbp-feasibility/` to get the hub too.
+3. Paste the Client ID in the setup panel (saved to that browser), check the onboarding fields, and
+   tap **Set up → Continue with Google**.
+4. Deployed: the OAuth client's Authorized JavaScript origins must also list the Netlify site's
+   origin, with no path.
+
 ## Status: API access granted (2026-09-29)
 
 Google has approved the project for the Business Profile APIs. Before relying on that, open Cloud
@@ -102,6 +177,44 @@ generally get their own listing rather than the hospital's. The design assumes o
 listing per HWP ("Nair Endocrine Clinic"). Before build, confirm how the flow handles an HWP who
 practises inside a hospital or a multi-doctor clinic. A wrong listing type can get suspended.
 
+## Credentials checklist (what to request from management)
+
+No secret key and no access token is handed over. Like `youtube-feasibility/`, the spike uses
+Google Identity Services' browser token-client flow, which needs only a **public OAuth Client ID**.
+The access token is minted in the tester's browser by the "Continue with Google" popup. The GBP
+APIs take no API key; they are OAuth-only (`business.manage`).
+
+**Required (blocks Phase 1):**
+
+- [ ] **Approved Google Cloud project**, with its project number. Confirm the quotas page shows
+      **300 QPM**, not 0, for Account Management, Business Information and Verifications. At 0 QPM
+      every listing call fails.
+- [ ] **APIs enabled** in that project: Account Management, Business Information, Verifications,
+      and My Business v4 (reviews).
+- [ ] **OAuth Client ID, type "Web application"**, in the same project. Authorised JavaScript
+      origins: `http://localhost:8000` (plus the Netlify origin if deployed). Only the Client ID is
+      needed (it is public, pasted into the setup panel). Do **not** request the client secret.
+      **Decided 2026-10-06:** reuse the YouTube spike's client
+      (`356302635116-hi082afmbhpg92ahaau3dj9fq385n41e`), hardcoded as the default in `app.js`. So
+      the approval, the enabled APIs and the `business.manage` scope all have to be on that same
+      Cloud project, `356302635116`.
+- [ ] **OAuth consent screen**: `https://www.googleapis.com/auth/business.manage` and
+      `https://www.googleapis.com/auth/userinfo.email` added as scopes, and every tester's Google
+      account added as a test user (Testing status is fine).
+- [ ] **Google account that owns a verified test listing**: for 5a select/edit, reviews read, and
+      7c remove access. Never a real HWP's live listing.
+
+**Needed for specific steps:**
+
+- [ ] **An unclaimed public listing of a genuine test practice** (5b real claim). Without one, 5b
+      runs as `validateOnly` only.
+- [ ] **A Ninto-owned Google account** to invite as `MANAGER` (step 11, the first half of model B).
+
+**Optional:**
+
+- [ ] **Maps JavaScript API key**, HTTP-referrer-restricted to the spike's origins, billing on.
+      Only for the 5b map preview and 5c pin drag; without it the spike shows raw lat/lng.
+
 ## Proposed spike structure
 
 Mirrors `youtube-feasibility/`:
@@ -113,7 +226,7 @@ gbp-feasibility/
   server.mjs      -- static file server, local dev only
 ```
 
-**Phase 0 (done / confirm):**
+**Phase 0 (done / confirm):** tick off the "Required" items in the credentials checklist above first.
 1. ~~Eligibility + GBP API contact form~~: **approved 2026-09-29.** Check that the quotas page
    shows 300 QPM for Account Management, Business Information and Verifications.
 2. In the same approved project, make sure these are enabled: Account Management, Business
