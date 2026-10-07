@@ -31,7 +31,7 @@ const SETTINGS_STORAGE_KEY = "gbp-feasibility-settings";
 // Cloud project must also be approved for the Business Profile APIs (quota
 // 300 QPM, not 0), have them enabled, and list business.manage on its
 // consent screen. Override it in the setup panel to test another client.
-const DEFAULT_CLIENT_ID = "356302635116-hi082afmbhpg92ahaau3dj9fq385n41e.apps.googleusercontent.com";
+const DEFAULT_CLIENT_ID = "285005867182-9aon12ipiclrv4leh51g1ja7gdt3os8u.apps.googleusercontent.com";
 const SCOPES = [
   "https://www.googleapis.com/auth/business.manage",
   "https://www.googleapis.com/auth/userinfo.email"
