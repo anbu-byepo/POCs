@@ -384,7 +384,7 @@ const state = {
 
   form: null,
   editReturn: "select", // where the edit screen's back arrow goes
-  googleValues: null, // the listing's current values, to flag fields onboarding would change
+  fieldNotes: null, // per-field notes on the edit screen: where Ninto onboarding differs from the prefilled Google value
   categoryChoices: [],
   categoryQuery: "",
 
@@ -624,18 +624,21 @@ function categorySelect() {
         <input data-category-query placeholder="Search Google categories" value="${escapeHtml(state.categoryQuery)}" style="font-size:13px;padding:8px 10px" />
         <button class="btn-small" data-action="search-categories" style="padding:8px 12px">Search</button>
       </div>
-      ${state.googleValues?.category && state.googleValues.category.name !== state.form.categoryName ? `<div class="google-has">On Google now: ${escapeHtml(state.googleValues.category.displayName)}</div>` : ""}
-      <div class="hint">Mapped from your Ninto specialty (${escapeHtml(onboarding().specialty)}) via Google's category list.</div>
+      ${fieldNote("category")}
+      <div class="hint">${state.step === "edit" && state.listing?.location?.categories?.primaryCategory ? "Your current category on Google. Search to change it." : `Mapped from your Ninto specialty (${escapeHtml(onboarding().specialty)}) via Google's category list.`}</div>
     </div>`;
 }
 
-function textField(label, key, { hint = "", googleKey = null } = {}) {
-  const googleValue = googleKey && state.googleValues ? state.googleValues[googleKey] : null;
-  const differs = googleValue != null && googleValue !== "" && googleValue !== state.form[key];
+function fieldNote(key) {
+  const note = state.fieldNotes?.[key];
+  return note ? `<div class="google-has">${escapeHtml(note)}</div>` : "";
+}
+
+function textField(label, key, { hint = "", noteKey = null } = {}) {
   return `<div class="field">
     <label>${label}</label>
     <input data-form="${key}" value="${escapeHtml(state.form[key])}" />
-    ${differs ? `<div class="google-has">On Google now: ${escapeHtml(googleValue)}</div>` : ""}
+    ${noteKey ? fieldNote(noteKey) : ""}
     ${hint ? `<div class="hint">${hint}</div>` : ""}
   </div>`;
 }
@@ -650,13 +653,13 @@ function hoursField() {
       <input type="time" data-form="opens" value="${escapeHtml(state.form.opens)}" style="flex:1;min-width:0" />
       <input type="time" data-form="closes" value="${escapeHtml(state.form.closes)}" style="flex:1;min-width:0" />
     </div>
-    ${state.googleValues?.hours ? `<div class="google-has">On Google now: ${escapeHtml(state.googleValues.hours)}</div>` : ""}
+    ${fieldNote("hours")}
   </div>`;
 }
 
 function addressFields() {
   return `
-    ${textField("ADDRESS", "addressLine1", { googleKey: "address" })}
+    ${textField("ADDRESS", "addressLine1", { noteKey: "address" })}
     ${textField("AREA", "addressLine2")}
     <div style="display:flex;gap:8px">
       <div style="flex:1">${textField("CITY", "city")}</div>
@@ -669,14 +672,14 @@ function renderEdit() {
   return `
     ${topbar({ back: "back-from-edit", title: state.listing.location.title })}
     <div class="body">
-      <div class="lede">Filled from your Ninto onboarding. Edit anything that's changed.</div>
+      <div class="lede">Filled from your listing on Google. Edit anything that's changed — where your Ninto profile says something different, it's shown under the field.</div>
       ${errorBox()}
-      ${textField("PRACTICE NAME", "title", { googleKey: "title" })}
+      ${textField("PRACTICE NAME", "title", { noteKey: "title" })}
       ${categorySelect()}
       ${addressFields()}
-      ${textField("PHONE", "phone", { googleKey: "phone" })}
+      ${textField("PHONE", "phone", { noteKey: "phone" })}
       ${hoursField()}
-      ${textField("WEBSITE", "website", { googleKey: "website", hint: "Your Ninto profile. Replace it if you have a clinic site." })}
+      ${textField("WEBSITE", "website", { noteKey: "website", hint: "Your clinic site, or your Ninto profile if you don't have one." })}
       <label class="toggle-row"><input type="checkbox" disabled /> Keep this listing in sync with my Ninto profile</label>
       <div class="hint" style="font-size:11px;color:var(--faint);margin-top:-8px">Ongoing sync needs a Ninto backend -- not part of this spike.</div>
       <button class="btn-primary" data-action="submit-edit">${isDryRun() ? "Validate with Google (dry run)" : "Submit to Google"}</button>
@@ -1205,7 +1208,7 @@ async function runCategorySearch(term) {
 }
 
 /** Loads category choices for the HWP's specialty, keeping the listing's current category in the list. */
-async function prepareCategories(currentCategory) {
+async function prepareCategories(currentCategory, { keepCurrent = false } = {}) {
   state.categoryQuery = categoryTerm(onboarding().specialty);
   let choices = [];
   try {
@@ -1213,36 +1216,80 @@ async function prepareCategories(currentCategory) {
   } catch {
     // logged by callGbp -- the user can still search by hand
   }
-  const fromSpecialty = choices[0]?.name ?? currentCategory?.name ?? "";
+  const fromSpecialty = (keepCurrent && currentCategory?.name) || choices[0]?.name || currentCategory?.name || "";
   if (currentCategory && !choices.some((c) => c.name === currentCategory.name)) choices = [...choices, currentCategory];
   state.categoryChoices = choices;
   state.form.categoryName = fromSpecialty;
 }
 
+/** The edit form for an existing listing: Google's current values, with Ninto onboarding filling any gaps. */
+function formFromLocation(loc) {
+  const form = formFromOnboarding();
+  const filled = new Set();
+  const take = (key, value) => {
+    if (value == null || value === "") return;
+    form[key] = String(value);
+    filled.add(key);
+  };
+  const addr = loc.storefrontAddress;
+  if (addr) {
+    const [line1, ...rest] = addr.addressLines ?? [];
+    take("addressLine1", line1);
+    take("addressLine2", rest.join(", "));
+    take("city", addr.locality);
+    take("state", addr.administrativeArea);
+    take("postalCode", addr.postalCode);
+  }
+  take("title", loc.title);
+  take("phone", loc.phoneNumbers?.primaryPhone);
+  take("website", loc.websiteUri);
+  take("lat", loc.latlng?.latitude);
+  take("lng", loc.latlng?.longitude);
+  const periods = loc.regularHours?.periods ?? [];
+  if (periods.length) {
+    const days = [...new Set(periods.map((p) => p.openDay))].sort().join();
+    const daySet = Object.keys(DAY_SETS).find((k) => [...DAY_SETS[k]].sort().join() === days);
+    const sameTimes = periods.every((p) => formatTime(p.openTime) === formatTime(periods[0].openTime) && formatTime(p.closeTime) === formatTime(periods[0].closeTime));
+    // The picker only holds one day range with one time span -- anything richer stays on onboarding's hours.
+    if (daySet && sameTimes) {
+      form.days = daySet;
+      form.opens = formatTime(periods[0].openTime);
+      form.closes = formatTime(periods[0].closeTime);
+      filled.add("hours");
+    }
+  }
+  return { form, filled };
+}
+
 async function openEdit(candidate) {
   state.listing = { account: candidate.account, location: candidate.location };
-  state.form = formFromOnboarding();
   const loc = candidate.location;
-  state.googleValues = {
-    title: loc.title ?? "",
-    address: formatAddress(loc.storefrontAddress),
-    phone: loc.phoneNumbers?.primaryPhone ?? "",
-    website: loc.websiteUri ?? "",
-    hours: loc.regularHours ? summarizeHours(loc.regularHours) : "",
-    category: loc.categories?.primaryCategory ?? null
+  const { form, filled } = formFromLocation(loc);
+  state.form = form;
+  const ninto = formFromOnboarding();
+  const notes = {};
+  const compare = (key, googleText, nintoText, isFilled) => {
+    if (!isFilled) notes[key] = "Not on Google yet — filled from your Ninto profile.";
+    else if (nintoText && nintoText !== googleText) notes[key] = `In Ninto: ${nintoText}`;
   };
-  // address is compared as one formatted string -- point the hint at line 1 only when it differs.
-  if (state.googleValues.address === formatAddress(storefrontAddress(state.form))) state.googleValues.address = "";
-  if (state.googleValues.hours === summarizeHours(regularHours(state.form))) state.googleValues.hours = "";
+  compare("title", form.title, ninto.title, filled.has("title"));
+  compare("phone", form.phone, ninto.phone, filled.has("phone"));
+  compare("website", form.website, ninto.website, filled.has("website"));
+  compare("address", formatAddress(storefrontAddress(form)), formatAddress(storefrontAddress(ninto)), filled.has("addressLine1"));
+  if (filled.has("hours")) compare("hours", summarizeHours(regularHours(form)), summarizeHours(regularHours(ninto)), true);
+  else if (loc.regularHours?.periods?.length) notes.hours = `On Google now: ${summarizeHours(loc.regularHours)} (split or per-day hours). Submitting replaces them with what's set here.`;
+  else notes.hours = "Not on Google yet — filled from your Ninto profile.";
+  state.fieldNotes = notes;
   showBusy("Preparing your details…");
   const current = loc.categories?.primaryCategory;
-  await prepareCategories(current ? { name: current.name, displayName: current.displayName } : null);
+  await prepareCategories(current ? { name: current.name, displayName: current.displayName } : null, { keepCurrent: true });
+  if (!current) notes.category = "Not on Google yet — matched from your Ninto specialty.";
   goTo("edit");
 }
 
 async function openCreate() {
   state.form = formFromOnboarding();
-  state.googleValues = null;
+  state.fieldNotes = null;
   showBusy("Preparing a new listing…");
   await prepareCategories(null);
   goTo("create-1");
