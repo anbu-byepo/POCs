@@ -9,6 +9,11 @@
 [build]
   publish = "."
 
+# surepass-prototype's verification proxy (needs SUREPASS_API_KEY in the site's
+# environment).
+[functions]
+  directory = "netlify/functions"
+
 # Plans, design sources and editor config live in the repo but aren't meant
 # to be served.
 [[redirects]]
@@ -19,6 +24,12 @@
 
 [[redirects]]
   from = "/.claude/*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/netlify/*"
   to = "/404.html"
   status = 404
   force = true

@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Health Professional Verification — Prototype</title>
+<style>
+  :root {
+    --bg: #f5f6f8;
+    --card-bg: #ffffff;
+    --border: #e2e5ea;
+    --text: #1a1d24;
+    --text-secondary: #6b7280;
+    --accent: #2563eb;
+    --accent-hover: #1d4ed8;
+    --success-bg: #ecfdf5;
+    --success-border: #a7f3d0;
+    --success-text: #047857;
+    --error-bg: #fef2f2;
+    --error-border: #fecaca;
+    --error-text: #b91c1c;
+    --disabled-bg: #f3f4f6;
+    --disabled-text: #9ca3af;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 32px 16px 64px;
+  }
+  .wrap { max-width: 640px; margin: 0 auto; }
+  header { margin-bottom: 24px; }
+  header h1 { font-size: 20px; margin: 0 0 4px; }
+  header p { margin: 0; color: var(--text-secondary); font-size: 14px; }
+  header .badge {
+    display: inline-block; margin-top: 8px; font-size: 12px; padding: 3px 8px;
+    border-radius: 999px; background: #fef3c7; color: #92400e; font-weight: 600;
+  }
+
+  .card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 16px;
+  }
+  .card h2 { font-size: 15px; margin: 0 0 12px; }
+
+  .type-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 10px;
+  }
+  .type-tile {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px;
+    text-align: left;
+    background: var(--card-bg);
+    cursor: pointer;
+    font: inherit;
+    color: var(--text);
+  }
+  .type-tile:hover:not(:disabled) { border-color: var(--accent); }
+  .type-tile.selected { border-color: var(--accent); background: #eff6ff; }
+  .type-tile strong { display: block; font-size: 14px; margin-bottom: 2px; }
+  .type-tile span { font-size: 12px; color: var(--text-secondary); }
+  .type-tile:disabled {
+    cursor: not-allowed;
+    background: var(--disabled-bg);
+    color: var(--disabled-text);
+  }
+  .type-tile:disabled strong, .type-tile:disabled span { color: var(--disabled-text); }
+  .type-tile .soon {
+    display: inline-block; margin-top: 6px; font-size: 10px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.04em; color: var(--disabled-text);
+  }
+
+  label { display: block; font-size: 13px; font-weight: 600; margin: 14px 0 6px; }
+  label:first-of-type { margin-top: 0; }
+  input {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 14px;
+    background: #fff;
+    color: var(--text);
+  }
+  input:focus { outline: none; border-color: var(--accent); }
+
+  button.verify {
+    margin-top: 18px;
+    width: 100%;
+    padding: 11px;
+    border: none;
+    border-radius: 8px;
+    background: var(--accent);
+    color: #fff;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button.verify:hover { background: var(--accent-hover); }
+  button.verify:disabled { background: var(--disabled-bg); color: var(--disabled-text); cursor: not-allowed; }
+
+  .result { margin-top: 16px; }
+  .result-panel {
+    border-radius: 10px;
+    padding: 14px 16px;
+    font-size: 13px;
+    border: 1px solid var(--border);
+  }
+  .result-panel.pending { color: var(--text-secondary); }
+  .result-panel.success { background: var(--success-bg); border-color: var(--success-border); color: var(--success-text); }
+  .result-panel.failure { background: var(--error-bg); border-color: var(--error-border); color: var(--error-text); }
+  .result-panel .label { font-weight: 700; margin-bottom: 6px; }
+  .result-panel pre {
+    margin: 8px 0 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: 12px;
+    background: rgba(0,0,0,0.03);
+    padding: 10px;
+    border-radius: 6px;
+    max-height: 260px;
+    overflow: auto;
+  }
+
+  .hidden { display: none !important; }
+  footer { margin-top: 24px; font-size: 12px; color: var(--text-secondary); text-align: center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Verify your professional credential</h1>
+    <p>Prototype — one verification API. You send a professional type + your details, the API decides which SurePass check to run. Only MBBS (Doctor) is enabled for now.</p>
+    <span class="badge">Prototype · not the real Ninto app</span>
+  </header>
+
+  <div class="card">
+    <h2>1. What are you verifying?</h2>
+    <div class="type-grid" id="type-grid">
+      <button class="type-tile" data-type="modern-medicine">
+        <strong>Doctor</strong>
+        <span>MBBS / modern medicine (NMC)</span>
+      </button>
+      <button class="type-tile" data-type="homeopathy" disabled>
+        <strong>BHMS Doctor</strong>
+        <span>Homeopathy council</span>
+        <span class="soon">Coming soon</span>
+      </button>
+      <button class="type-tile" data-type="dentist" disabled>
+        <strong>BDS / MDS Doctor</strong>
+        <span>Dental council</span>
+        <span class="soon">Coming soon</span>
+      </button>
+      <button class="type-tile" data-type="nurse" disabled>
+        <strong>Nurse ID</strong>
+        <span>Nursing council (NUID)</span>
+        <span class="soon">Coming soon</span>
+      </button>
+      <button class="type-tile" data-type="nuid-detailed" disabled>
+        <strong>NUID Details</strong>
+        <span>Detailed nurse lookup</span>
+        <span class="soon">Coming soon</span>
+      </button>
+      <button class="type-tile" data-type="digilocker" disabled>
+        <strong>DigiLocker</strong>
+        <span>Verify via shared link</span>
+        <span class="soon">Coming soon</span>
+      </button>
+    </div>
+  </div>
+
+  <div class="card hidden" id="form-card">
+    <h2 id="form-title">2. Enter your details</h2>
+    <form id="verify-form">
+      <div id="doctor-fields" class="fields hidden">
+        <label for="registration_number">Registration number</label>
+        <input id="registration_number" name="registration_number" placeholder="e.g. 123352" />
+        <label for="registration_year">Registration year</label>
+        <input id="registration_year" name="registration_year" placeholder="e.g. 2017" />
+      </div>
+      <button type="submit" class="verify" id="verify-btn">Verify</button>
+    </form>
+
+    <div class="result hidden" id="result">
+      <div class="result-panel pending" id="result-panel">
+        <div class="label" id="result-label">Checking with SurePass…</div>
+        <pre id="result-body"></pre>
+      </div>
+    </div>
+  </div>
+
+  <footer>Calls one API (<code>/api/surepass/verify</code>) — the SurePass API key stays server-side, never in the browser.</footer>
+</div>
+
+<script>
+  const PRODUCT_CONFIG = {
+    "modern-medicine": { title: "Doctor Verification (MBBS)", fieldsGroup: "doctor-fields" }
+  };
+  const VERIFY_ENDPOINT = "/api/surepass/verify";
+
+  const typeGrid = document.getElementById("type-grid");
+  const formCard = document.getElementById("form-card");
+  const formTitle = document.getElementById("form-title");
+  const verifyForm = document.getElementById("verify-form");
+  const verifyBtn = document.getElementById("verify-btn");
+  const resultWrap = document.getElementById("result");
+  const resultPanel = document.getElementById("result-panel");
+  const resultLabel = document.getElementById("result-label");
+  const resultBody = document.getElementById("result-body");
+  const fieldGroups = document.querySelectorAll(".fields");
+
+  let selectedType = null;
+
+  typeGrid.addEventListener("click", (event) => {
+    const tile = event.target.closest(".type-tile");
+    if (!tile || tile.disabled) return;
+
+    document.querySelectorAll(".type-tile").forEach((t) => t.classList.remove("selected"));
+    tile.classList.add("selected");
+
+    selectedType = tile.dataset.type;
+    const config = PRODUCT_CONFIG[selectedType];
+
+    formTitle.textContent = `2. Enter your details — ${config.title}`;
+    fieldGroups.forEach((group) => group.classList.add("hidden"));
+    document.getElementById(config.fieldsGroup).classList.remove("hidden");
+
+    formCard.classList.remove("hidden");
+    resultWrap.classList.add("hidden");
+    formCard.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  });
+
+  verifyForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!selectedType) return;
+
+    const formData = new FormData(verifyForm);
+    const body = { professionalType: selectedType, ...Object.fromEntries(formData.entries()) };
+
+    verifyBtn.disabled = true;
+    verifyBtn.textContent = "Verifying…";
+    resultWrap.classList.remove("hidden");
+    resultPanel.className = "result-panel pending";
+    resultLabel.textContent = "Checking with SurePass…";
+    resultBody.textContent = "";
+
+    try {
+      const response = await fetch(VERIFY_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      const data = await response.json();
+      const success = response.ok && data?.success !== false;
+
+      resultPanel.className = `result-panel ${success ? "success" : "failure"}`;
+      resultLabel.textContent = success
+        ? "SurePass responded — check the fields below"
+        : `SurePass returned an error (HTTP ${response.status})`;
+      resultBody.textContent = JSON.stringify(data, null, 2);
+    } catch (error) {
+      resultPanel.className = "result-panel failure";
+      resultLabel.textContent = "Couldn't reach the verification proxy";
+      resultBody.textContent = error.message;
+    } finally {
+      verifyBtn.disabled = false;
+      verifyBtn.textContent = "Verify";
+    }
+  });
+</script>
+</body>
+</html>

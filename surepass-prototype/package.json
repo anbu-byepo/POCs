@@ -1,0 +1,14 @@
+{
+  "name": "surepass-prototype",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Throwaway prototype: proxy + UI for SurePass doctor/BHMS/BDS-MDS verification (Phase 0 of doctor-verification plan).",
+  "scripts": {
+    "serve": "node --env-file-if-exists=../../ninto/.env --env-file-if-exists=.env server.mjs",
+    "check": "node --env-file-if-exists=../../ninto/.env --env-file-if-exists=.env check.mjs"
+  },
+  "dependencies": {
+    "express": "^4.21.0"
+  }
+}
