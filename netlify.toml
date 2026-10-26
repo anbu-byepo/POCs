@@ -9,8 +9,9 @@
 [build]
   publish = "."
 
-# surepass-prototype's verification proxy (needs SUREPASS_API_KEY in the site's
-# environment).
+# appointment-flow's Razorpay proxy (needs RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET
+# in the site's environment; without them the app uses its simulated gateway)
+# and surepass-prototype's verification proxy (needs SUREPASS_API_KEY).
 [functions]
   directory = "netlify/functions"
 

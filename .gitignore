@@ -3,3 +3,4 @@
 node_modules/
 youtube-feasibility/results.html
 .DS_Store
+.env

@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>Appointment Flow POC</title>
+    <link rel="stylesheet" href="shared/base.css" />
+    <style>
+      .head { padding: 14px 20px; background: #fff; border-bottom: 1px solid var(--divider); display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+      .head h1 { font-size: 16px; margin: 0; }
+      .head p { font-size: 12px; color: var(--muted); margin: 0; flex: 1; min-width: 260px; line-height: 1.5; }
+      .head .links { display: flex; gap: 8px; }
+      .split { display: grid; grid-template-columns: 1fr 400px; gap: 0; height: calc(100vh - 120px); min-height: 640px; }
+      .split iframe { width: 100%; height: 100%; border: none; background: #fff; }
+      .split .pane { display: flex; flex-direction: column; min-width: 0; }
+      .split .pane + .pane { border-left: 1px solid var(--border); }
+      .pane .label { font-size: 11px; font-weight: 700; letter-spacing: .08em; color: var(--faint); padding: 6px 12px; background: var(--page); border-bottom: 1px solid var(--border); }
+      .try { padding: 12px 20px 24px; font-size: 12.5px; color: var(--text-2); line-height: 1.6; max-width: 980px; }
+      .try h2 { font-size: 12px; letter-spacing: .08em; color: var(--faint); margin: 8px 0 4px; }
+      .try ol { margin: 0; padding-left: 18px; }
+      @media (max-width: 900px) {
+        .split { grid-template-columns: 1fr; height: auto; }
+        .split iframe { height: 760px; }
+        .split .pane + .pane { border-left: none; border-top: 1px solid var(--border); }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="simbar"></div>
+    <div class="head">
+      <h1>Ninto appointment flow: clinic app + patient app</h1>
+      <p>Both apps share one demo day in this browser and move on the demo clock above. Payments run on
+        Razorpay test mode when keys are set on the server, otherwise on a simulated gateway. See
+        <code>audit/appointment-flow-plan.md</code>.</p>
+      <div class="links"><a class="btn outline sm" href="clinic/">Clinic app only</a><a class="btn outline sm" href="patient/">Patient app only</a><a class="btn ghost sm" href="../">All POCs</a></div>
+    </div>
+    <div class="split">
+      <div class="pane"><div class="label">CLINIC APP (RECEPTION)</div><iframe src="clinic/" title="Clinic app"></iframe></div>
+      <div class="pane"><div class="label">PATIENT APP</div><iframe src="patient/" title="Patient app" allow="geolocation"></iframe></div>
+    </div>
+    <div class="try">
+      <h2>THINGS TO TRY</h2>
+      <ol>
+        <li><b>Book and pay (patient):</b> pick a doctor, a slot, Pay now. Try a decline, closing Checkout, and (demo controls) losing the success callback to see the re-check confirm or refund.</li>
+        <li><b>Book and pay (clinic):</b> Schedule → Calendar → tap a free slot → walk-in or scheduled → Cash, UPI, Card, payment link or pay at visit. A link shows up in the patient app to pay.</li>
+        <li><b>Late patient:</b> load the “Late patient example” scenario, press +5 → at 10:30 Arjun is Reserved with a 10-minute grace. Call next in the clinic, then check in from the patient app within or after grace.</li>
+        <li><b>On the way:</b> on the appointment day, tap I'm leaving now, share location, and watch the distance on the clinic row as the clock runs.</li>
+        <li><b>Arrival call:</b> 15 minutes before a slot, un-arrived patients are called. The signed-in patient answers on the phone (Voice AI or IVR, English or Tamil in Settings); the result lands on the clinic row.</li>
+        <li><b>Refunds:</b> cancel as the patient (rule depends on hours left) or press Doctor cancels (full refund). Online payments are refunded through Razorpay.</li>
+      </ol>
+    </div>
+    <script type="module">
+      import { mountSimBar } from "./shared/ui.js";
+      mountSimBar(document.getElementById("simbar"));
+    </script>
+  </body>
+</html>

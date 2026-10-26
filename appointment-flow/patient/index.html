@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>Ninto Patient App</title>
+    <link rel="stylesheet" href="../shared/base.css" />
+    <style>
+      .page { display: flex; flex-direction: column; align-items: center; padding: 20px 16px 48px; gap: 14px; }
+      .page-head { max-width: 420px; text-align: center; }
+      .page-head h1 { font-size: 16px; margin: 0 0 6px; }
+      .page-head p { font-size: 12px; line-height: 1.55; color: var(--muted); margin: 0; }
+      body.embedded .page { padding: 0; }
+      body.embedded .page-head, body.embedded #simbar { display: none; }
+      body.embedded .frame { border-radius: 0; border: none; box-shadow: none; width: 100%; min-height: 100vh; }
+
+      .frame { width: 390px; max-width: 100%; height: 760px; background: #fff; border: 1px solid var(--border); border-radius: 18px; box-shadow: 0 6px 20px rgba(18,36,27,.08); overflow: hidden; display: flex; flex-direction: column; position: relative; }
+      body.embedded .frame { height: auto; }
+      .topbar { padding: 14px 16px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--divider); flex: none; background: #fff; }
+      .topbar .back { color: var(--accent-dark); font-size: 18px; font-weight: 700; padding-right: 4px; }
+      .topbar .title { font-size: 16px; font-weight: 700; }
+      .topbar .right { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+      .appbar { background: var(--chrome); color: #fff; padding: 14px 16px; display: flex; align-items: center; gap: 10px; flex: none; }
+      .appbar .brand { font-size: 18px; font-weight: 800; letter-spacing: .02em; }
+      .bell { margin-left: auto; position: relative; font-size: 18px; background: none; border: none; color: inherit; cursor: pointer; padding: 4px; }
+      .bell .dot { position: absolute; top: -2px; right: -4px; background: #F05A4F; color: #fff; font-size: 10px; font-weight: 700; border-radius: 999px; padding: 1px 5px; }
+      .body { flex: 1; padding: 18px 16px 24px; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; }
+      .h1 { font-size: 20px; font-weight: 700; line-height: 1.25; }
+      .lede { font-size: 13px; line-height: 1.5; color: var(--muted); }
+      .footer { padding: 12px 16px 16px; border-top: 1px solid var(--divider); display: flex; flex-direction: column; gap: 8px; flex: none; background: #fff; }
+
+      .card { border: 1px solid var(--border); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 8px; background: #fff; }
+      .card.tap:hover { border-color: var(--accent); }
+      .card.tint { background: var(--tint); border-color: var(--tint-border); }
+      .row { display: flex; gap: 10px; align-items: center; }
+      .between { display: flex; justify-content: space-between; gap: 10px; align-items: center; }
+      .avatar { width: 44px; height: 44px; border-radius: 50%; background: var(--accent-soft); color: var(--accent-dark); font-weight: 800; display: flex; align-items: center; justify-content: center; flex: none; }
+      .avatar.lg { width: 64px; height: 64px; font-size: 22px; }
+      .name { font-size: 15px; font-weight: 700; }
+      .sub { font-size: 12.5px; color: var(--muted); line-height: 1.4; }
+
+      .dates { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
+      .date { flex: none; width: 58px; border: 1px solid var(--border); border-radius: 10px; padding: 8px 0; text-align: center; cursor: pointer; background: #fff; }
+      .date .dow { font-size: 11px; color: var(--faint); font-weight: 600; }
+      .date .day { font-size: 18px; font-weight: 700; }
+      .date.on { border: 2px solid var(--accent); background: var(--tint); }
+      .slots { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+      .slots.ranges { grid-template-columns: repeat(2, 1fr); }
+      .slot { border: 1px solid var(--border); border-radius: 8px; padding: 10px 0; text-align: center; font-size: 13px; font-weight: 600; cursor: pointer; background: #fff; }
+      .slot.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+      .slot.off { color: #B5BDB8; background: var(--panel); cursor: not-allowed; text-decoration: line-through; }
+
+      .big-tick { width: 64px; height: 64px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 32px; display: flex; align-items: center; justify-content: center; align-self: center; }
+      .center { text-align: center; }
+      .token { font-size: 56px; font-weight: 800; color: var(--accent-dark); line-height: 1; }
+      .estimate .head { font-size: 18px; font-weight: 700; }
+      .estimate .subline { font-size: 14px; color: var(--text-2); }
+      .status-hero { border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 6px; }
+      .status-hero.green { background: var(--accent); color: #fff; }
+      .status-hero.green .sub { color: rgba(255,255,255,.85); }
+      .notif { border-bottom: 1px solid var(--divider); padding: 12px 0; display: flex; flex-direction: column; gap: 6px; }
+      .notif.unread .t::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); margin-right: 6px; vertical-align: middle; }
+      .notif .t { font-size: 14px; font-weight: 700; }
+      .notif .b { font-size: 13px; color: var(--text-2); line-height: 1.45; }
+      .notif .when { font-size: 11px; color: var(--faint); }
+      .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+      .sheet-backdrop { position: absolute; inset: 0; background: rgba(18,36,27,.55); display: flex; flex-direction: column; justify-content: flex-end; z-index: 5; }
+      .sheet { background: #fff; border-radius: 18px 18px 0 0; padding: 10px 20px 22px; display: flex; flex-direction: column; gap: 14px; max-height: 90%; overflow-y: auto; }
+      .grabber { width: 42px; height: 4px; border-radius: 999px; background: var(--border); align-self: center; }
+      .viewfinder { height: 200px; border-radius: 14px; background: #0D1611; display: flex; align-items: center; justify-content: center; position: relative; }
+      .viewfinder .qr { width: 110px; height: 110px; background:
+        conic-gradient(from 90deg at 30% 30%, #fff 25%, transparent 0) 0 0 / 22px 22px,
+        repeating-linear-gradient(90deg, #fff 0 6px, transparent 6px 11px), #222; border: 8px solid #fff; border-radius: 6px; opacity: .9; }
+      .viewfinder::after { content: ""; position: absolute; inset: 30px 90px; border: 3px solid var(--accent); border-radius: 12px; }
+
+      .call { position: absolute; inset: 0; background: linear-gradient(180deg, #0E4A32, #072a1c); color: #fff; z-index: 10; display: flex; flex-direction: column; }
+      .call .who { padding: 36px 20px 12px; text-align: center; }
+      .call .who .n { font-size: 22px; font-weight: 700; }
+      .call .who .s { font-size: 13px; opacity: .75; margin-top: 4px; }
+      .call .ring-actions { margin-top: auto; display: flex; justify-content: space-around; padding: 30px; }
+      .call .round { width: 64px; height: 64px; border-radius: 50%; border: none; color: #fff; font-size: 13px; font-weight: 700; cursor: pointer; }
+      .call .round.green { background: #22B45A; }
+      .call .round.red { background: #E5483E; }
+      .call .chat { flex: 1; overflow-y: auto; padding: 8px 16px; display: flex; flex-direction: column; gap: 8px; }
+      .bubble { max-width: 85%; padding: 9px 12px; border-radius: 12px; font-size: 13.5px; line-height: 1.45; }
+      .bubble.bot { background: rgba(255,255,255,.12); align-self: flex-start; }
+      .bubble.me { background: #fff; color: var(--ink); align-self: flex-end; }
+      .call .replies { padding: 10px 16px 16px; display: flex; flex-direction: column; gap: 6px; }
+      .call .replies button { background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.2); color: #fff; border-radius: 10px; padding: 9px; font-size: 13px; cursor: pointer; text-align: left; }
+      .call .replies input { font: inherit; font-size: 13px; padding: 9px 10px; border-radius: 10px; border: none; width: 100%; }
+      .keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 10px 40px 20px; }
+      .keypad button { height: 52px; border-radius: 50%; background: rgba(255,255,255,.12); border: none; color: #fff; font-size: 20px; font-weight: 600; cursor: pointer; }
+      .call .hang { align-self: center; margin: 4px 0 20px; }
+
+      .devpanel { width: 390px; max-width: 100%; }
+      .devpanel summary { font-size: 11.5px; font-weight: 600; color: var(--muted); cursor: pointer; padding: 6px 2px; }
+      .devpanel .inner { background: #fff; border: 1px solid var(--border); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 10px; font-size: 12px; }
+      .devpanel label { display: flex; gap: 8px; align-items: center; }
+      .devpanel select, .devpanel input[type=number] { font: inherit; font-size: 12px; padding: 4px 6px; }
+      .devpanel p { margin: 0; color: var(--faint); line-height: 1.5; }
+    </style>
+  </head>
+  <body>
+    <div id="simbar"></div>
+    <div class="page">
+      <div class="page-head">
+        <h1>Ninto patient app: appointment flow (POC)</h1>
+        <p>Book, pay with Razorpay, get reminders, share location, check in and wait. Open the
+          <a href="../clinic/">clinic app</a> in another tab (or use the <a href="../">split view</a>)
+          to see the same appointments from reception.</p>
+      </div>
+      <div class="frame" id="frame"></div>
+      <details class="devpanel" id="devpanel" open>
+        <summary>Demo controls for the patient side (not part of the design)</summary>
+        <div class="inner" id="devinner"></div>
+      </details>
+    </div>
+    <script type="module" src="app.js"></script>
+  </body>
+</html>

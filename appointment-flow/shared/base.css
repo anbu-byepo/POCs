@@ -1,0 +1,101 @@
+/* Palette from the other Ninto POCs (../gbp-feasibility). */
+:root {
+  --ink: #12241B;
+  --body-text: #2C332E;
+  --text-2: #4A544D;
+  --muted: #5B6660;
+  --faint: #7A867F;
+  --chrome: #0E4A32;
+  --accent: #0EA04A;
+  --accent-dark: #0B6B3A;
+  --accent-soft: #E6F4EA;
+  --tint: #F4FBF6;
+  --tint-border: #CDE7D6;
+  --panel: #F4F6F4;
+  --divider: #EEF0ED;
+  --border: #DFE4E0;
+  --page: #F1F3F0;
+  --warn-bg: #FFF6E5;
+  --warn-border: #F1D9A6;
+  --warn-ink: #7A5410;
+  --danger: #B3261E;
+  --danger-soft: #FCEDEC;
+  --info: #1F5FA8;
+  --info-soft: #E8F0FA;
+  --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--ink); font-family: system-ui, -apple-system, "Segoe UI", "Helvetica Neue", Arial, sans-serif; -webkit-font-smoothing: antialiased; }
+button { font: inherit; }
+a { color: var(--accent-dark); }
+[data-action] { cursor: pointer; }
+.hidden { display: none !important; }
+
+/* Buttons */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; font-size: 14px; font-weight: 700; padding: 11px 16px; border-radius: 10px; border: 1px solid transparent; cursor: pointer; text-decoration: none; }
+.btn.primary { background: var(--accent); color: #fff; }
+.btn.primary:disabled { background: #C8CFCA; cursor: not-allowed; }
+.btn.outline { background: #fff; color: var(--ink); border-color: var(--border); }
+.btn.danger { background: #fff; color: var(--danger); border-color: #EBC4C1; }
+.btn.ghost { background: transparent; color: var(--accent-dark); padding-left: 4px; padding-right: 4px; }
+.btn.block { width: 100%; }
+.btn.sm { font-size: 12px; padding: 6px 10px; border-radius: 8px; }
+
+/* Badges and chips */
+.badge { font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 999px; display: inline-block; white-space: nowrap; background: var(--panel); color: var(--muted); }
+.badge.ok { background: var(--accent-soft); color: var(--accent-dark); }
+.badge.amber { background: var(--warn-bg); color: var(--warn-ink); }
+.badge.red { background: var(--danger-soft); color: var(--danger); }
+.badge.info { background: var(--info-soft); color: var(--info); }
+
+/* Boxes */
+.note { background: var(--panel); border-radius: 10px; padding: 12px 14px; font-size: 12.5px; line-height: 1.5; color: var(--text-2); }
+.warn { background: var(--warn-bg); border: 1px solid var(--warn-border); color: var(--warn-ink); border-radius: 10px; padding: 12px 14px; font-size: 13px; line-height: 1.5; }
+.error { background: var(--danger-soft); color: var(--danger); border-radius: 10px; padding: 12px 14px; font-size: 13px; line-height: 1.5; }
+.okbox { background: var(--tint); border: 1px solid var(--tint-border); border-radius: 10px; padding: 12px 14px; font-size: 13px; line-height: 1.5; color: var(--accent-dark); }
+.kv { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; padding: 9px 0; border-bottom: 1px solid var(--divider); }
+.kv .k { color: var(--muted); }
+.kv .v { color: var(--ink); text-align: right; font-weight: 600; }
+.section-label { font-size: 11px; font-weight: 700; letter-spacing: .08em; color: var(--faint); text-transform: uppercase; }
+table.rule { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+table.rule td { padding: 7px 0; border-bottom: 1px solid var(--divider); }
+table.rule td:last-child { text-align: right; font-weight: 600; }
+.field label { display: block; font-size: 11px; font-weight: 700; letter-spacing: .06em; color: var(--faint); margin-bottom: 6px; text-transform: uppercase; }
+.field input, .field select, .field textarea { font: inherit; font-size: 14px; padding: 10px 12px; width: 100%; border: 1px solid var(--border); border-radius: 8px; background: #fff; color: var(--ink); }
+.field .hint { font-size: 12px; color: var(--faint); margin-top: 5px; line-height: 1.4; }
+.choice { border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; display: flex; gap: 10px; align-items: flex-start; font-size: 14px; cursor: pointer; background: #fff; }
+.choice.on { border: 2px solid var(--accent); padding: 11px 13px; background: var(--tint); }
+.choice .t { font-weight: 700; }
+.choice .s { font-size: 12px; color: var(--muted); margin-top: 2px; line-height: 1.4; }
+.mono { font-family: var(--mono); font-size: 11.5px; }
+
+/* Demo controls (not part of either app's design) */
+.simbar { background: #16241C; color: #DDE8E1; font-size: 12px; padding: 8px 12px; display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
+.simbar .clock { font-family: var(--mono); font-size: 13px; font-weight: 700; color: #fff; background: rgba(255,255,255,.08); padding: 4px 8px; border-radius: 6px; }
+.simbar button, .simbar select { font: inherit; font-size: 12px; background: rgba(255,255,255,.1); color: #fff; border: 1px solid rgba(255,255,255,.18); border-radius: 6px; padding: 4px 8px; cursor: pointer; }
+.simbar button.on { background: var(--accent); border-color: var(--accent); }
+.simbar .lbl { color: #9FB3A7; font-weight: 600; letter-spacing: .04em; }
+.simbar .sp { flex: 1; }
+.simbar a { color: #9FDDB7; }
+
+/* Toasts */
+.toasts { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 8px; z-index: 50; width: min(380px, calc(100% - 32px)); pointer-events: none; }
+.toast { background: var(--ink); color: #fff; border-radius: 10px; padding: 10px 14px; font-size: 13px; line-height: 1.4; box-shadow: 0 8px 24px rgba(0,0,0,.18); }
+.toast b { display: block; }
+
+/* Simulated Razorpay checkout */
+.mock-rzp { position: fixed; inset: 0; background: rgba(10,20,15,.6); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 16px; }
+.mock-rzp-card { background: #fff; width: 360px; max-width: 100%; border-radius: 12px; overflow: hidden; box-shadow: 0 20px 50px rgba(0,0,0,.3); }
+.mock-rzp-head { background: #072654; color: #fff; padding: 16px; display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+.mock-rzp-brand { font-weight: 700; font-size: 14px; }
+.mock-rzp-sub { font-size: 12px; opacity: .8; margin-top: 3px; }
+.mock-rzp-amt { font-size: 20px; font-weight: 700; }
+.mock-rzp-body { padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
+.mock-rzp-row { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--muted); align-items: center; }
+.mock-rzp-row select { font: inherit; font-size: 12px; padding: 4px; }
+.mock-rzp-btn { font: inherit; font-size: 13px; font-weight: 700; border-radius: 8px; padding: 10px; border: 1px solid var(--border); background: #fff; cursor: pointer; }
+.mock-rzp-btn.ok { background: #3395FF; border-color: #3395FF; color: #fff; }
+.mock-rzp-btn.bad { color: var(--danger); }
+.mock-rzp-btn.ghost { color: var(--warn-ink); }
+.mock-rzp-btn.link { border: none; color: var(--muted); font-weight: 600; }
+.mock-rzp-foot { font-size: 11px; color: var(--faint); padding: 0 16px 14px; line-height: 1.45; }
