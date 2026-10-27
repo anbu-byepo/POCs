@@ -608,8 +608,64 @@ function screenConfirmed(s) {
     </div>
     <div class="footer">
       <button class="btn primary block" data-action="open-appt" data-id="${a.id}">View appointment</button>
+      ${a.payment.receiptNo ? `<button class="btn outline block" data-action="receipt" data-id="${a.id}">View receipt</button>` : ""}
       <button class="btn ghost block" data-action="nav" data-to="home">Back to home</button>
     </div>`;
+}
+
+// Payment receipt for a paid booking. Print uses the browser's dialog, which
+// also covers "Save as PDF".
+function screenReceipt(s) {
+  const a = findAppt(s, ui.apptId);
+  const p = a?.payment;
+  if (!p?.receiptNo) {
+    ui.screen = "home";
+    return screenHome(s);
+  }
+  const d = doctorOf(s, a);
+  const pt = patientOf(s, a);
+  const refund = p.refund;
+  return `${topbar("Receipt", "appt")}
+    <div class="body">
+      <div class="receipt" id="receipt">
+        <div class="center">
+          <div class="name">${esc(s.clinic.name)}</div>
+          <div class="sub">${esc(s.clinic.address)}</div>
+        </div>
+        <div class="receipt-amt center">
+          <div class="section-label">Payment receipt</div>
+          <div class="amt">${rupees(p.amount)}</div>
+          <span class="badge ok">Paid</span>
+        </div>
+        <div>
+          <div class="kv"><span class="k">Receipt no.</span><span class="v mono">${esc(p.receiptNo)}</span></div>
+          <div class="kv"><span class="k">Paid on</span><span class="v">${shortDateTime(p.paidAt)}</span></div>
+          <div class="kv"><span class="k">Billed to</span><span class="v">${esc(pt.name)}<br><span class="sub">${esc(pt.phone)}</span></span></div>
+        </div>
+        <div>
+          <div class="section-label">Details</div>
+          <div class="kv"><span class="k">Consultation, ${esc(d.name)}<br><span class="sub">${esc(d.specialty)} · ${shortDateTime(apptMs(a), slotLabel(s, a))}</span></span><span class="v">${rupees(p.amount)}</span></div>
+          <div class="kv total"><span class="k">Total paid</span><span class="v">${rupees(p.amount)}</span></div>
+        </div>
+        <div>
+          <div class="section-label">Payment</div>
+          <div class="kv"><span class="k">Method</span><span class="v">${esc(p.method ?? "online")}</span></div>
+          ${p.paymentId ? `<div class="kv"><span class="k">Payment ID</span><span class="v mono">${esc(p.paymentId)}</span></div>` : ""}
+          ${p.orderId ? `<div class="kv"><span class="k">Order ID</span><span class="v mono">${esc(p.orderId)}</span></div>` : ""}
+          <div class="kv"><span class="k">Booking ref.</span><span class="v mono">${esc(a.id)}</span></div>
+        </div>
+        ${refund ? `<div class="note">Refund of ${rupees(refund.amount)} (${refund.pct}%): ${esc(refund.status === "processed" ? "processed" : refund.status === "counter" ? "due at the counter" : "in progress")}.</div>` : ""}
+        <div class="sub center">This is a computer-generated receipt and needs no signature.</div>
+      </div>
+    </div>
+    <div class="footer">
+      <button class="btn primary block" data-action="print-receipt">Download or print</button>
+    </div>`;
+}
+
+function shortDateTime(ms, time = tms(ms)) {
+  const { day, month } = shortDate(ymd(ms));
+  return `${day} ${month} ${new Date(ms).getFullYear()}, ${esc(time)}`;
 }
 
 function locationCard(s, a) {
@@ -675,6 +731,7 @@ function screenAppt(s) {
     <div class="between"><div class="name">Payment</div>${paymentBadge(a)}</div>
     ${p.status === "pending" && p.mode === "clinic" && isActive(a) ? `<div class="sub">Pay ${rupees(p.amount)} at the counter${a.status === "checked_in" ? " now" : " when you check in"}.</div>` : ""}
     ${p.status === "pending" && p.mode === "link" ? `<div class="sub">The clinic sent you a payment link.</div><button class="btn primary sm" style="align-self:flex-start" data-action="pay-link" data-id="${a.id}">Pay ${rupees(p.amount)}</button>` : ""}
+    ${p.receiptNo ? `<button class="btn outline sm" style="align-self:flex-start" data-action="receipt" data-id="${a.id}">View receipt</button>` : ""}
     ${p.history.length ? `<details><summary class="sub">History</summary>${p.history.map(h => `<div class="sub">${tms(h.at)} · ${esc(h.text)}</div>`).join("")}</details>` : ""}
   </div>`;
 
@@ -783,7 +840,7 @@ function callHtml(s) {
     <div class="ring-actions"><button class="round red" data-action="decline">Decline</button><button class="round green" data-action="answer">Answer</button></div></div>`;
 }
 
-const SCREENS = { home: screenHome, doctor: screenDoctor, slots: screenSlots, review: screenReview, failed: screenFailed, checking: screenChecking, confirmed: screenConfirmed, appt: screenAppt, leaving: screenLeaving, inbox: screenInbox };
+const SCREENS = { home: screenHome, doctor: screenDoctor, slots: screenSlots, review: screenReview, failed: screenFailed, checking: screenChecking, confirmed: screenConfirmed, receipt: screenReceipt, appt: screenAppt, leaving: screenLeaving, inbox: screenInbox };
 
 function render() {
   const s = getState();
@@ -904,6 +961,10 @@ frame.addEventListener("click", event => {
       return render();
     case "pay-link":
       return payLink(id);
+    case "receipt":
+      return go("receipt", { apptId: id });
+    case "print-receipt":
+      return window.print();
     case "notif-confirm":
       update(st => {
         findAppt(st, id).flags.confirmedAt = st.clock.nowMs;

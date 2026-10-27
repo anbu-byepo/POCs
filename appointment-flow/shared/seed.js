@@ -64,7 +64,7 @@ function appt(s, { id, doctorId = "d1", patientId, slot, status = "booked", sour
     reason: "",
     status,
     createdAt: s.clock.nowMs - 2 * 24 * 60 * MIN,
-    payment: { mode: "clinic", status: "pending", amount: doctor.fee, method: null, history: [], ...payment },
+    payment: { mode: "clinic", status: "pending", amount: doctor.fee, method: null, history: [], ...payment, ...(payment?.status === "paid" && { paidAt: s.clock.nowMs - 2 * 24 * 60 * MIN }) },
     reminders: {},
     token: null,
     seq: slot,
@@ -84,9 +84,9 @@ export function seedMorning() {
   const s = baseState(today(9 * 60 + 50));
   s.appointments = [
     appt(s, { id: "a_seed1", patientId: "p2", slot: 600 }),
-    appt(s, { id: "a_seed2", patientId: "p3", slot: 615, source: "patient", payment: { mode: "online", status: "paid", method: "upi", paymentId: "pay_seed_1" } }),
+    appt(s, { id: "a_seed2", patientId: "p3", slot: 615, source: "patient", payment: { mode: "online", status: "paid", method: "upi", paymentId: "pay_seed_1", receiptNo: "RCPT-SEED-0001" } }),
     appt(s, { id: "a_seed3", patientId: "p4", slot: 645 }),
-    appt(s, { id: "a_seed4", patientId: "p5", slot: 660, source: "patient", payment: { mode: "online", status: "paid", method: "card", paymentId: "pay_seed_2" } }),
+    appt(s, { id: "a_seed4", patientId: "p5", slot: 660, source: "patient", payment: { mode: "online", status: "paid", method: "card", paymentId: "pay_seed_2", receiptNo: "RCPT-SEED-0002" } }),
     appt(s, { id: "a_seed5", doctorId: "d2", patientId: "p6", slot: 620 })
   ];
   for (const a of s.appointments) a.reminders = { day: a.createdAt, twoHour: a.createdAt };
@@ -99,7 +99,7 @@ export function seedLateExample() {
   const mk = (id, patientId, slot, extra = {}) => appt(s, { id, patientId, slot, ...extra });
   s.appointments = [
     mk("a_p1", "p2", 600, { status: "in_consult", checkedInBy: "QR", token: 1, checkedInAt: now - 30 * MIN, startedAt: now - 9 * MIN }),
-    mk("a_p2", "p1", 630, { source: "patient", payment: { mode: "online", status: "paid", method: "upi", paymentId: "pay_seed_3", amount: 500 } }),
+    mk("a_p2", "p1", 630, { source: "patient", payment: { mode: "online", status: "paid", method: "upi", paymentId: "pay_seed_3", receiptNo: "RCPT-SEED-0003", amount: 500 } }),
     mk("a_p3", "p3", 645, { status: "checked_in", checkedInBy: "reception", token: 2, checkedInAt: now - 20 * MIN }),
     mk("a_p4", "p4", 660, { status: "checked_in", checkedInBy: "QR", token: 3, checkedInAt: now - 12 * MIN }),
     mk("a_p5", "p5", 675, { status: "checked_in", checkedInBy: "QR", token: 4, checkedInAt: now - 5 * MIN })

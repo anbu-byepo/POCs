@@ -131,6 +131,10 @@ export function markPaid(s, a, { method, paymentId = null, orderId = a.payment.o
   p.orderId = orderId;
   p.paidAt = s.clock.nowMs;
   p.error = null;
+  if (!p.receiptNo) {
+    s.receiptSeq = (s.receiptSeq ?? 0) + 1;
+    p.receiptNo = `RCPT-${ymd(s.clock.nowMs).replaceAll("-", "")}-${String(s.receiptSeq).padStart(4, "0")}`;
+  }
   p.history.push({ at: s.clock.nowMs, text: `Paid ${rupees(p.amount)} by ${method}${by ? ` (${by})` : ""}` });
   log(s, `${patientOf(s, a).name}: payment ${rupees(p.amount)} ${method}`);
 }
