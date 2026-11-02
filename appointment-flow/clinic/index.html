@@ -91,6 +91,14 @@
       .opt.off { opacity: .45; cursor: not-allowed; }
       .slots { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
       .slots .opt { padding: 8px 0; font-size: 12px; }
+      .hist { background: #fff; border: 1px solid var(--border); border-radius: 12px; padding: 4px 14px 8px; display: flex; flex-direction: column; }
+      .hist .group-title { margin: 12px 0 4px; }
+      .hrow { display: grid; grid-template-columns: 80px 1fr auto; gap: 12px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--divider); font-size: 13px; }
+      .hrow .time { font-weight: 700; }
+      .hrow .muted { color: var(--faint); font-size: 12px; }
+      .hrow .end { display: flex; gap: 8px; align-items: center; justify-content: flex-end; flex-wrap: wrap; font-weight: 700; }
+      @media (max-width: 560px) { .hrow { grid-template-columns: 1fr; gap: 6px; } .hrow .end { justify-content: flex-start; } }
+      @media print { .modal-bg { position: static; background: none; } .modal { max-height: none; overflow: visible; } }
       .log { font-family: var(--mono); font-size: 11px; color: var(--muted); max-height: 180px; overflow-y: auto; background: #fff; border: 1px solid var(--border); border-radius: 10px; padding: 10px; }
     </style>
   </head>

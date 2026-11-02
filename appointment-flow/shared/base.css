@@ -99,3 +99,20 @@ table.rule td:last-child { text-align: right; font-weight: 600; }
 .mock-rzp-btn.ghost { color: var(--warn-ink); }
 .mock-rzp-btn.link { border: none; color: var(--muted); font-weight: 600; }
 .mock-rzp-foot { font-size: 11px; color: var(--faint); padding: 0 16px 14px; line-height: 1.45; }
+
+/* Payment receipt / GST invoice (shared/receipt.js). Printing shows only #receipt. */
+.receipt { border: 1px solid var(--border); border-radius: 12px; padding: 18px 16px; display: flex; flex-direction: column; gap: 16px; background: #fff; }
+.receipt-amt { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 14px 0; border-top: 1px dashed var(--border); border-bottom: 1px dashed var(--border); }
+.receipt-amt .amt { font-size: 30px; font-weight: 800; color: var(--ink); }
+.receipt .name { font-size: 15px; font-weight: 700; }
+.receipt .sub { font-size: 12.5px; color: var(--muted); line-height: 1.4; }
+.receipt .center { text-align: center; }
+.receipt .kv .v .sub, .receipt .kv .k .sub { font-weight: 400; }
+.receipt .kv.total { border-bottom: none; font-size: 14px; }
+.receipt .kv.total .k { color: var(--ink); font-weight: 700; }
+.receipt .mono { word-break: break-all; }
+@media print {
+  body * { visibility: hidden; }
+  #receipt, #receipt * { visibility: visible; }
+  #receipt { position: absolute; top: 0; left: 0; width: 100%; max-width: 480px; border: none; }
+}

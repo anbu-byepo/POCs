@@ -131,12 +131,18 @@ export function markPaid(s, a, { method, paymentId = null, orderId = a.payment.o
   p.orderId = orderId;
   p.paidAt = s.clock.nowMs;
   p.error = null;
+  p.tax = taxSnapshot(s);
   if (!p.receiptNo) {
     s.receiptSeq = (s.receiptSeq ?? 0) + 1;
     p.receiptNo = `RCPT-${ymd(s.clock.nowMs).replaceAll("-", "")}-${String(s.receiptSeq).padStart(4, "0")}`;
   }
   p.history.push({ at: s.clock.nowMs, text: `Paid ${rupees(p.amount)} by ${method}${by ? ` (${by})` : ""}` });
   log(s, `${patientOf(s, a).name}: payment ${rupees(p.amount)} ${method}`);
+}
+
+// GST details frozen onto a payment when it's marked paid (see receipt.js).
+export function taxSnapshot(s) {
+  return { gstin: s.clinic.gstin ?? "", rate: Number(s.settings.gstRate ?? 0), sac: s.settings.sac ?? "9993", state: s.clinic.state ?? "" };
 }
 
 export function markFailed(s, a, error) {

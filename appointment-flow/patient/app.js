@@ -20,6 +20,7 @@ import {
 } from "../shared/flow.js";
 import { pay, reconcile, gatewayInfo, paySimulatedLink, startBackgroundWork, payerOf } from "../shared/payments.js";
 import { mountSimBar, paymentBadge, toast } from "../shared/ui.js";
+import { receiptHtml } from "../shared/receipt.js";
 import { MIN, esc, rupees, t12, tms, ymd, dateLabel, shortDate, addDays, inFrame } from "../shared/util.js";
 
 const frame = document.getElementById("frame");
@@ -454,7 +455,7 @@ function screenHome(s) {
   const mine = myAppts(s)
     .filter(a => isActive(a) || ((a.status === "pending_payment" || a.status === "expired") && a.payment.status === "failed"))
     .sort((x, y) => apptMs(x) - apptMs(y));
-  const past = myAppts(s).filter(a => ["completed", "cancelled", "no_show"].includes(a.status)).slice(-3).reverse();
+  const past = myAppts(s).filter(a => ["completed", "cancelled", "no_show"].includes(a.status)).sort((x, y) => apptMs(y) - apptMs(x)).slice(0, 3);
   return `
     <div class="appbar"><span class="brand">ninto</span>${bell()}</div>
     <div class="body">
@@ -617,55 +618,16 @@ function screenConfirmed(s) {
 // also covers "Save as PDF".
 function screenReceipt(s) {
   const a = findAppt(s, ui.apptId);
-  const p = a?.payment;
-  if (!p?.receiptNo) {
+  const html = receiptHtml(s, a);
+  if (!html) {
     ui.screen = "home";
     return screenHome(s);
   }
-  const d = doctorOf(s, a);
-  const pt = patientOf(s, a);
-  const refund = p.refund;
   return `${topbar("Receipt", "appt")}
-    <div class="body">
-      <div class="receipt" id="receipt">
-        <div class="center">
-          <div class="name">${esc(s.clinic.name)}</div>
-          <div class="sub">${esc(s.clinic.address)}</div>
-        </div>
-        <div class="receipt-amt center">
-          <div class="section-label">Payment receipt</div>
-          <div class="amt">${rupees(p.amount)}</div>
-          <span class="badge ok">Paid</span>
-        </div>
-        <div>
-          <div class="kv"><span class="k">Receipt no.</span><span class="v mono">${esc(p.receiptNo)}</span></div>
-          <div class="kv"><span class="k">Paid on</span><span class="v">${shortDateTime(p.paidAt)}</span></div>
-          <div class="kv"><span class="k">Billed to</span><span class="v">${esc(pt.name)}<br><span class="sub">${esc(pt.phone)}</span></span></div>
-        </div>
-        <div>
-          <div class="section-label">Details</div>
-          <div class="kv"><span class="k">Consultation, ${esc(d.name)}<br><span class="sub">${esc(d.specialty)} · ${shortDateTime(apptMs(a), slotLabel(s, a))}</span></span><span class="v">${rupees(p.amount)}</span></div>
-          <div class="kv total"><span class="k">Total paid</span><span class="v">${rupees(p.amount)}</span></div>
-        </div>
-        <div>
-          <div class="section-label">Payment</div>
-          <div class="kv"><span class="k">Method</span><span class="v">${esc(p.method ?? "online")}</span></div>
-          ${p.paymentId ? `<div class="kv"><span class="k">Payment ID</span><span class="v mono">${esc(p.paymentId)}</span></div>` : ""}
-          ${p.orderId ? `<div class="kv"><span class="k">Order ID</span><span class="v mono">${esc(p.orderId)}</span></div>` : ""}
-          <div class="kv"><span class="k">Booking ref.</span><span class="v mono">${esc(a.id)}</span></div>
-        </div>
-        ${refund ? `<div class="note">Refund of ${rupees(refund.amount)} (${refund.pct}%): ${esc(refund.status === "processed" ? "processed" : refund.status === "counter" ? "due at the counter" : "in progress")}.</div>` : ""}
-        <div class="sub center">This is a computer-generated receipt and needs no signature.</div>
-      </div>
-    </div>
+    <div class="body">${html}</div>
     <div class="footer">
       <button class="btn primary block" data-action="print-receipt">Download or print</button>
     </div>`;
-}
-
-function shortDateTime(ms, time = tms(ms)) {
-  const { day, month } = shortDate(ymd(ms));
-  return `${day} ${month} ${new Date(ms).getFullYear()}, ${esc(time)}`;
 }
 
 function locationCard(s, a) {

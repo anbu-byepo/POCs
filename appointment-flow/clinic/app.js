@@ -19,6 +19,7 @@ import {
 } from "../shared/flow.js";
 import { pay, createLink, gatewayInfo, startBackgroundWork, payerOf } from "../shared/payments.js";
 import { mountSimBar, paymentBadge, toast } from "../shared/ui.js";
+import { receiptHtml, GST_RATES } from "../shared/receipt.js";
 import { MIN, esc, rupees, t12, tms, dateLabel, addDays, inFrame } from "../shared/util.js";
 
 const side = document.getElementById("side");
@@ -32,6 +33,9 @@ const ui = {
   view: "queue",
   filter: "all",
   search: "",
+  hSearch: "",
+  hDoctor: "all",
+  hRange: 30,
   modal: null,
   gateway: null,
   open: new Set()
@@ -88,6 +92,7 @@ function rowActions(s, a) {
   }
   if (a.status === "no_show") acts.push(btn("reinsert1", "Arrived: reinsert after next 1", "primary"));
   if (a.payment.status !== "paid" && a.payment.status !== "refunded" && (isActive(a) || a.status === "completed")) acts.push(btn("collect", "Collect payment"));
+  if (a.payment.receiptNo) acts.push(btn("receipt", "Receipt"));
   if (a.payment.refund?.status === "counter") acts.push(btn("refund-done", `Mark ${rupees(a.payment.refund.amount)} refunded`));
   if (notArrived(a)) acts.push(btn("doctor-cancel", "Doctor cancels", "danger"));
   const ringing = a.calls.at(-1)?.status === "ringing";
@@ -190,13 +195,57 @@ function viewPatients(s) {
   return `<div class="toolbar"><h1>Patients</h1></div>
     <div class="field" style="max-width:420px"><input id="search" data-bind="search" placeholder="Search by name or phone" value="${esc(ui.search)}" /></div>
     <div class="plist">${list.map(p => {
-      const appts = s.appointments.filter(a => a.patientId === p.id && (isActive(a) || a.status === "completed")).sort((x, y) => (x.date + x.slot).localeCompare(y.date + y.slot));
+      const appts = s.appointments.filter(a => a.patientId === p.id && isActive(a)).sort((x, y) => (x.date + x.slot).localeCompare(y.date + y.slot));
+      const past = s.appointments.filter(a => a.patientId === p.id && isPast(s, a)).sort(newestFirst);
       return `<div class="pcard"><div class="top"><div><div class="n">${esc(p.name)}</div><div class="s">${esc(p.phone)}</div></div>
         <button class="btn primary sm" data-action="book-patient" data-id="${p.id}">Book appointment</button></div>
         ${appts.map(a => `<div class="appt"><b>${dateLabel(a.date, today(s))} ${esc(slotLabel(s, a))}</b> · ${esc(doctorOf(s, a).name)} · ${esc(a.status.replace("_", " "))} ${paymentBadge(a)}
-          ${a.payment.status === "pending" || a.payment.status === "failed" ? `<button class="btn outline sm" data-action="collect" data-id="${a.id}">Collect payment</button>` : ""}</div>`).join("")}
+          ${a.payment.status === "pending" || a.payment.status === "failed" ? `<button class="btn outline sm" data-action="collect" data-id="${a.id}">Collect payment</button>` : ""}
+          ${a.payment.receiptNo ? `<button class="btn outline sm" data-action="receipt" data-id="${a.id}">Receipt</button>` : ""}</div>`).join("")}
+        ${past.length ? `<details><summary class="s" style="cursor:pointer">Past visits (${past.length})</summary>${past.map(a => `<div class="appt"><b>${dateLabel(a.date, today(s))} ${esc(slotLabel(s, a))}</b> · ${esc(doctorOf(s, a).name)} · ${esc(a.status.replace("_", " "))} ${paymentBadge(a)}
+          ${a.payment.receiptNo ? `<button class="btn outline sm" data-action="receipt" data-id="${a.id}">Receipt</button>` : ""}</div>`).join("")}</details>` : ""}
       </div>`;
     }).join("") || `<div class="note">No patients match.</div>`}</div>`;
+}
+
+// Past appointments (anything before today, plus today's finished ones),
+// newest first, with the receipt for each paid visit.
+const PAST_STATUS = ["completed", "no_show", "cancelled"];
+const isPast = (s, a) => a.date < today(s) ? a.status !== "expired" && a.status !== "pending_payment" : PAST_STATUS.includes(a.status) && a.date === today(s);
+const newestFirst = (x, y) => (y.date + String(y.slot).padStart(4, "0")).localeCompare(x.date + String(x.slot).padStart(4, "0"));
+
+function viewHistory(s) {
+  const q = ui.hSearch.trim().toLowerCase();
+  const from = addDays(today(s), -ui.hRange);
+  const list = s.appointments
+    .filter(a => isPast(s, a) && a.date >= from && (ui.hDoctor === "all" || a.doctorId === ui.hDoctor))
+    .filter(a => {
+      const p = patientOf(s, a);
+      return !q || p.name.toLowerCase().includes(q) || p.phone.includes(q) || (a.payment.receiptNo ?? "").toLowerCase().includes(q);
+    })
+    .sort(newestFirst);
+  const paid = list.filter(a => a.payment.status === "paid" || a.payment.status === "refunded");
+  const collected = paid.reduce((n, a) => n + a.payment.amount - (a.payment.refund?.status === "processed" ? a.payment.refund.amount : 0), 0);
+  let lastDate = null;
+  const rows = list.map(a => {
+    const head = a.date !== lastDate ? `<div class="group-title">${dateLabel(a.date, today(s))}</div>` : "";
+    lastDate = a.date;
+    const p = patientOf(s, a);
+    return `${head}<div class="hrow">
+      <span class="time">${esc(slotLabel(s, a))}</span>
+      <span><b>${esc(p.name)}</b> <span class="muted">${esc(p.phone)}</span><br><span class="muted">${esc(doctorOf(s, a).name)} · ${esc(a.status.replace("_", " "))}${a.payment.receiptNo ? ` · <span class="mono">${esc(a.payment.receiptNo)}</span>` : ""}</span></span>
+      <span class="end">${rupees(a.payment.amount)} ${paymentBadge(a)}
+        ${a.payment.receiptNo ? `<button class="btn outline sm" data-action="receipt" data-id="${a.id}">Receipt</button>` : a.payment.status !== "refunded" && a.status === "completed" ? `<button class="btn outline sm" data-action="collect" data-id="${a.id}">Collect payment</button>` : ""}</span>
+    </div>`;
+  }).join("");
+  return `<div class="toolbar"><h1>History</h1></div>
+    <div class="toolbar">
+      <div class="chips"><span class="chip ${ui.hDoctor === "all" ? "on" : ""}" data-action="h-doctor" data-v="all">All doctors</span>${s.doctors.map(d => `<span class="chip ${d.id === ui.hDoctor ? "on" : ""}" data-action="h-doctor" data-v="${d.id}">${esc(d.name)}</span>`).join("")}</div>
+      <span class="seg">${[[7, "7 days"], [30, "30 days"], [365, "1 year"]].map(([v, l]) => `<button class="${ui.hRange === v ? "on" : ""}" data-action="h-range" data-v="${v}">${l}</button>`).join("")}</span>
+    </div>
+    <div class="field" style="max-width:420px"><input id="h-search" data-bind="hSearch" placeholder="Search patient, phone or receipt no." value="${esc(ui.hSearch)}" /></div>
+    <div class="stats"><div><b>${list.length}</b>visits</div><div><b>${paid.length}</b>receipts</div><div><b>${rupees(collected)}</b>collected</div></div>
+    <div class="hist">${rows || `<div class="note">No past appointments here.</div>`}</div>`;
 }
 
 function viewSettings(s) {
@@ -212,6 +261,14 @@ function viewSettings(s) {
         <div class="hint">${esc(ui.gateway?.label ?? "")}${ui.gateway?.reason ? ` · ${esc(ui.gateway.reason)}` : ""}</div></div>
       <div class="two">
         <div class="field"><label>Payment hold (min)</label>${num("holdMin", 2, 30)}<div class="hint">How long a slot is held while the patient pays.</div></div>
+      </div>
+      <h2>GST billing</h2>
+      <div class="two">
+        <div class="field"><label>Clinic GSTIN</label><input data-setting="clinic.gstin" value="${esc(s.clinic.gstin ?? "")}" placeholder="33AABCN1234F1Z5" maxlength="15" /></div>
+        <div class="field"><label>State (place of supply)</label><input data-setting="clinic.state" value="${esc(s.clinic.state ?? "")}" placeholder="Tamil Nadu (33)" /></div>
+        <div class="field"><label>GST on consultation fee</label>${sel("gstRate", GST_RATES.map(r => [r, r ? `${r}% (CGST ${r / 2}% + SGST ${r / 2}%)` : "Exempt (bill of supply)"]))}
+          <div class="hint">The fee includes GST; the receipt splits it out. Consultations at a clinical establishment are usually exempt.</div></div>
+        <div class="field"><label>SAC code</label><input data-setting="sac" value="${esc(st.sac ?? "9993")}" /></div>
       </div>
       <h2>Refund rule (shown before paying)</h2>
       <div class="two">
@@ -261,7 +318,11 @@ function modalHtml(s) {
   const doctor = s.doctors.find(d => d.id === m.doctorId);
   let title = "Book appointment";
   let body = "";
-  if (m.kind === "collect") {
+  if (m.kind === "receipt") {
+    title = "Receipt";
+    body = `${receiptHtml(s, findAppt(s, m.apptId))}
+      <button class="btn primary block" data-action="print-receipt">Download or print</button>`;
+  } else if (m.kind === "collect") {
     const a = findAppt(s, m.apptId);
     title = "Collect payment";
     body = `<div class="kv"><span class="k">Patient</span><span class="v">${esc(patientOf(s, a).name)}</span></div>
@@ -313,6 +374,7 @@ function modalHtml(s) {
       ${a.token ? `<div class="kv"><span class="k">Token</span><span class="v">${a.token}</span></div>` : ""}
       ${a.payment.linkUrl ? `<div class="note">Payment link: <a href="${esc(a.payment.linkUrl)}" target="_blank" rel="noopener">${esc(a.payment.linkUrl)}</a></div>` : ""}
       ${m.warn ? `<div class="warn">${esc(m.warn)}</div>` : ""}
+      ${a.payment.receiptNo ? `<button class="btn outline block" data-action="receipt" data-id="${a.id}">View receipt</button>` : ""}
       <button class="btn primary block" data-action="m-close">Back to schedule</button>`;
   }
   return `<div class="modal-bg" data-action="m-bg"><div class="modal" data-stop><div class="mh"><span class="t">${title}</span><button class="x" data-action="m-close" aria-label="Close">×</button></div>${body}</div></div>`;
@@ -405,7 +467,8 @@ async function collectModal() {
       return render();
     }
     toast("Payment updated");
-    ui.modal = null;
+    const paid = findAppt(getState(), m.apptId);
+    ui.modal = paid.payment.receiptNo ? { kind: "receipt", apptId: paid.id } : null;
   } catch (err) {
     Object.assign(m, { busy: null, error: err.message });
   }
@@ -417,11 +480,11 @@ async function collectModal() {
 function render() {
   const s = getState();
   side.innerHTML = `<div class="brand">ninto clinic</div><div class="clinic">${esc(s.clinic.name)}</div>
-    ${[["schedule", "Schedule"], ["patients", "Patients"], ["settings", "Settings"]].map(([k, l]) => `<div class="nav ${ui.tab === k ? "on" : ""}" data-action="tab" data-v="${k}">${l}</div>`).join("")}
+    ${[["schedule", "Schedule"], ["history", "History"], ["patients", "Patients"], ["settings", "Settings"]].map(([k, l]) => `<div class="nav ${ui.tab === k ? "on" : ""}" data-action="tab" data-v="${k}">${l}</div>`).join("")}
     <div class="gw">Payments: ${esc(ui.gateway?.label ?? "…")}</div>`;
   const typing = document.activeElement?.matches?.("input, textarea, select") && (main.contains(document.activeElement) || modalEl.contains(document.activeElement));
   if (!typing) {
-    main.innerHTML = { schedule: viewSchedule, patients: viewPatients, settings: viewSettings }[ui.tab](s);
+    main.innerHTML = { schedule: viewSchedule, history: viewHistory, patients: viewPatients, settings: viewSettings }[ui.tab](s);
     modalEl.innerHTML = modalHtml(s);
   }
 }
@@ -443,6 +506,8 @@ document.addEventListener("click", async event => {
     case "day": ui.date = addDays(ui.date, Number(v)); break;
     case "view": ui.view = v; break;
     case "filter": ui.filter = v; break;
+    case "h-doctor": ui.hDoctor = v; break;
+    case "h-range": ui.hRange = Number(v); break;
     case "toggle": ui.open.has(id) ? ui.open.delete(id) : ui.open.add(id); break;
     case "next": {
       const next = update(st => callNext(st, ui.doctorId, ui.date));
@@ -475,6 +540,8 @@ document.addEventListener("click", async event => {
       a.payment.status = "refunded";
       a.payment.history.push({ at: st.clock.nowMs, text: `Refunded ${rupees(a.payment.refund.amount)} in cash at the counter` });
     }); break;
+    case "receipt": ui.modal = { kind: "receipt", apptId: id }; break;
+    case "print-receipt": return window.print();
     case "collect": ui.modal = { kind: "collect", apptId: id, pay: null }; break;
     case "slot": ui.modal = { kind: "book", step: "type", doctorId: ui.doctorId, date: ui.date, slot: Number(el.dataset.slot), type: null, pay: null }; break;
     case "book-patient": ui.modal = { kind: "book", step: "slot", patientId: id, doctorId: ui.doctorId, date: today(s), slot: null, type: "scheduled", pay: null }; break;
@@ -511,7 +578,7 @@ document.addEventListener("input", event => {
   if (t.dataset.bind) ui[t.dataset.bind] = t.value;
   if (t.dataset.mbind && ui.modal) ui.modal[t.dataset.mbind] = t.value;
   // Search filters as you type: redraw, then put the caret back.
-  if (t.id === "search" || t.id === "m-q") {
+  if (t.id === "search" || t.id === "m-q" || t.id === "h-search") {
     const pos = t.selectionStart;
     t.blur();
     render();
@@ -526,7 +593,8 @@ document.addEventListener("change", event => {
   if (!key) return;
   const raw = event.target.value;
   update(s => {
-    if (key === "clinic.note") s.clinic.note = raw;
+    if (key.startsWith("clinic.")) s.clinic[key.slice(7)] = key === "clinic.gstin" ? raw.trim().toUpperCase() : raw;
+    else if (key === "gstRate") s.settings.gstRate = Number(raw);
     else s.settings[key] = event.target.type === "number" ? Number(raw) : raw;
   });
   if (key === "gateway") gatewayInfo().then(g => { ui.gateway = g; render(); });
