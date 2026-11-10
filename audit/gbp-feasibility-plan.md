@@ -76,6 +76,35 @@ manager's name rather than their email. The spike matches the Ninto manager by e
 recognises that manager while the invite is pending. The real integration should match on the
 `account` field of Ninto's own GBP account instead.
 
+### Added: photos & videos upload (2026-11-10)
+
+The Manage screen now has a **Photos & Videos** section: it lists the listing's media
+(`media.list`, v4) with Delete, plus a "Feasibility spike extra" box that uploads a photo or video
+from the owner's device with the 3-call byte flow (`media:startUpload` -> POST bytes to
+`upload/v1/media/{ref}?upload_type=media` -> `media.create` with `dataRef`). Dry run logs the
+`media.create` body instead of sending it.
+
+Google's published limits (Business Profile Help 6103862; the API docs state none) are checked in
+the browser before sending, with a "Send anyway" override to probe what the API itself enforces:
+
+| | Photo | Video |
+|---|---|---|
+| Format | JPG or PNG | not stated (MP4 safe) |
+| Size | 10 KB – 5 MB | ≤ 75 MB |
+| Resolution | ≥ 250×250 (720×720 recommended) | ≥ 720p |
+| Length | — | ≤ 30 s |
+
+COVER and PROFILE are photo-only; cover photos take no description; descriptions can't be edited
+after upload. New media can take 24–48 h of Google review (Pending / Not approved / Live) and stays
+Pending on an unverified listing.
+
+**Open until run live:**
+- **Video via API.** The v4 reference says "In this version, only photos are supported" while the
+  upload guide shows a `VIDEO` example. Upload a short MP4 under `ADDITIONAL` to settle it.
+- **CORS on the byte-upload endpoint.** If step 2 fails with a network error, the bytes need a
+  server proxy, or use `sourceUrl` (one call, file at a public URL) instead.
+- **Enforcement.** Whether the API rejects a > 30 s or > 75 MB video, or only Google's review does.
+
 ### Running it
 
 1. Fill in the credentials checklist below. You need the Web Client ID, the consent screen with

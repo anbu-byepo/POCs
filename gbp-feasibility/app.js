@@ -403,7 +403,10 @@ const state = {
   googleUpdated: null,
   showCodeEntry: false,
   showRemoveSheet: false,
-  dryRunPayload: null
+  dryRunPayload: null,
+
+  media: null, // {items, total} | {error} -- the listing's photos/videos (v4)
+  mediaUpload: { file: null, meta: null, category: "ADDITIONAL", description: "", override: false, busy: false, error: null, result: null }
 };
 
 function personalAccount() {
@@ -908,6 +911,8 @@ function renderManage() {
                  .join("")}`
       }
 
+      ${renderMediaSection()}
+
       <div class="section-label" style="margin-top:6px">NINTO'S ACCESS</div>
       <div class="lede">${
         manager
@@ -977,6 +982,7 @@ function wireFrameEvents() {
     categoryQuery.addEventListener("input", () => (state.categoryQuery = categoryQuery.value));
     categoryQuery.addEventListener("keydown", (e) => e.key === "Enter" && handleAction("search-categories"));
   }
+  wireMediaUpload();
 }
 
 // ---------------------------------------------------------------------------
@@ -1092,6 +1098,15 @@ async function handleAction(action, id) {
     case "close-remove":
       state.showRemoveSheet = false;
       render();
+      break;
+    case "upload-media":
+      uploadMedia();
+      break;
+    case "delete-media":
+      deleteMedia(Number(id));
+      break;
+    case "refresh-media":
+      loadMedia();
       break;
     case "remove-access":
       removeAccess();
@@ -1445,6 +1460,8 @@ async function openManage(accountName, locationName) {
     saveListingRef();
     goTo("manage");
     loadReviews(accountName, locationName);
+    state.media = null;
+    loadMedia();
   } catch (error) {
     fail(error, "busy");
   }
@@ -1459,6 +1476,276 @@ async function loadReviews(accountName, locationName) {
     state.reviews = { error: error.message };
   }
   if (state.step === "manage") render();
+}
+
+// ---------------------------------------------------------------------------
+// Photos & videos -- feasibility spike extra (not part of the design).
+// v4 media API, parent is accounts/{a}/locations/{l}. Upload from bytes is
+// three calls: media:startUpload -> POST bytes to upload/v1/media/{ref} ->
+// media.create with dataRef. Limits below are Google's published ones
+// (support.google.com/business/answer/6103862); the API docs state none, so
+// the "send anyway" box exists to find out what the API actually enforces.
+
+const MEDIA_LIMITS = {
+  PHOTO: { types: ["image/jpeg", "image/png"], minBytes: 10 * 1024, maxBytes: 5 * 1024 * 1024, minSide: 250 },
+  VIDEO: { maxBytes: 75 * 1024 * 1024, maxSeconds: 30, minSide: 720 }
+};
+const MEDIA_CATEGORIES = ["ADDITIONAL", "COVER", "PROFILE", "EXTERIOR", "INTERIOR", "AT_WORK", "TEAMS", "PRODUCT", "COMMON_AREA"];
+const PHOTO_ONLY_CATEGORIES = ["COVER", "PROFILE"];
+
+function mediaFormatOf(file) {
+  return file?.type?.startsWith("video/") ? "VIDEO" : "PHOTO";
+}
+
+function formatBytes(bytes) {
+  return bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.round(bytes / 1024)} KB`;
+}
+
+/** Reads width/height (and duration for video) from the picked file, locally. */
+function readMediaMeta(file) {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const done = (meta) => {
+      URL.revokeObjectURL(url);
+      resolve(meta);
+    };
+    if (mediaFormatOf(file) === "VIDEO") {
+      const video = document.createElement("video");
+      video.preload = "metadata";
+      video.onloadedmetadata = () => done({ width: video.videoWidth, height: video.videoHeight, duration: video.duration });
+      video.onerror = () => done({ unreadable: true });
+      video.src = url;
+    } else {
+      const img = new Image();
+      img.onload = () => done({ width: img.naturalWidth, height: img.naturalHeight });
+      img.onerror = () => done({ unreadable: true });
+      img.src = url;
+    }
+  });
+}
+
+/** Ways the picked file breaks Google's published limits (empty = fine). */
+function mediaIssues({ file, meta, category }) {
+  if (!file) return [];
+  const format = mediaFormatOf(file);
+  const issues = [];
+  if (format === "PHOTO") {
+    const lim = MEDIA_LIMITS.PHOTO;
+    if (!lim.types.includes(file.type)) issues.push(`Photo must be JPG or PNG (this is ${file.type || "unknown"}).`);
+    if (file.size < lim.minBytes) issues.push(`Photo is ${formatBytes(file.size)} -- minimum is 10 KB.`);
+    if (file.size > lim.maxBytes) issues.push(`Photo is ${formatBytes(file.size)} -- maximum is 5 MB.`);
+    if (meta?.width && Math.min(meta.width, meta.height) < lim.minSide) issues.push(`Photo is ${meta.width}×${meta.height} -- minimum is 250×250.`);
+  } else {
+    const lim = MEDIA_LIMITS.VIDEO;
+    if (file.size > lim.maxBytes) issues.push(`Video is ${formatBytes(file.size)} -- maximum is 75 MB.`);
+    if (meta?.duration > lim.maxSeconds) issues.push(`Video is ${Math.round(meta.duration)}s long -- maximum is 30s.`);
+    if (meta?.width && Math.min(meta.width, meta.height) < lim.minSide) issues.push(`Video is ${meta.width}×${meta.height} -- needs 720p or higher.`);
+    if (PHOTO_ONLY_CATEGORIES.includes(category)) issues.push(`${category} takes a photo, not a video.`);
+  }
+  if (meta?.unreadable) issues.push("Couldn't read this file's dimensions in the browser -- it may not be a supported format.");
+  return issues;
+}
+
+function renderMediaSection() {
+  const media = state.media;
+  const u = state.mediaUpload;
+  const issues = mediaIssues(u);
+  const format = u.file ? mediaFormatOf(u.file) : null;
+  const metaLine = u.file
+    ? [format, formatBytes(u.file.size), u.meta?.width ? `${u.meta.width}×${u.meta.height}` : "", u.meta?.duration ? `${u.meta.duration.toFixed(1)}s` : ""].filter(Boolean).join(" · ")
+    : "";
+
+  const grid = !media
+    ? `<div class="lede">Loading…</div>`
+    : media.error
+      ? `<div class="warn">Media API: ${escapeHtml(media.error)}</div>`
+      : media.items.length === 0
+        ? `<div class="lede">No photos or videos on this listing yet.</div>`
+        : `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">${media.items
+            .map((m, i) => {
+              const thumb = m.thumbnailUrl || (m.mediaFormat === "PHOTO" ? m.googleUrl : "");
+              return `<div style="font-size:11px;line-height:1.35;color:var(--muted)">
+                <a href="${escapeHtml(m.googleUrl ?? "#")}" target="_blank" rel="noopener" style="display:block;aspect-ratio:1;border-radius:8px;overflow:hidden;background:var(--divider);position:relative">
+                  ${thumb ? `<img src="${escapeHtml(thumb)}" alt="" style="width:100%;height:100%;object-fit:cover" />` : `<span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center">Processing…</span>`}
+                  ${m.mediaFormat === "VIDEO" ? `<span style="position:absolute;left:5px;bottom:5px;background:rgba(0,0,0,.65);color:#fff;border-radius:4px;padding:1px 5px;font-size:10px;font-weight:700">▶ VIDEO</span>` : ""}
+                </a>
+                <div style="margin-top:4px">${escapeHtml(m.locationAssociation?.category ?? "—")}${m.insights?.viewCount ? ` · ${escapeHtml(m.insights.viewCount)} views` : ""}</div>
+                <span data-action="delete-media" data-id="${i}" style="color:var(--danger);cursor:pointer">Delete</span>
+              </div>`;
+            })
+            .join("")}</div>
+          <div class="lede" style="font-size:12px">${media.total ?? media.items.length} item${(media.total ?? media.items.length) === 1 ? "" : "s"} on Google</div>`;
+
+  return `
+      <div class="section-label" style="margin-top:6px">PHOTOS &amp; VIDEOS</div>
+      ${grid}
+      <div class="link-muted" data-action="refresh-media">Refresh</div>
+
+      <div style="border:1px dashed var(--border);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:10px">
+        <div><div style="font-size:12px;font-weight:700">Feasibility spike extra (not part of the design)</div>
+          <div style="font-size:11.5px;color:var(--faint);margin-top:2px">Add a photo or video to this listing through the API.</div></div>
+        <div class="field" style="margin:0"><label>FILE</label>
+          <input id="media-file" type="file" accept="image/jpeg,image/png,video/*" ${u.busy ? "disabled" : ""} />
+          ${u.file ? `<div class="hint">${escapeHtml(u.file.name)} -- ${escapeHtml(metaLine)}</div>` : `<div class="hint">Photo: JPG/PNG, 10 KB–5 MB, at least 250×250. Video: up to 30s, 75 MB, 720p or higher.</div>`}</div>
+        <div class="field" style="margin:0"><label>CATEGORY</label>
+          <select id="media-category" ${u.busy ? "disabled" : ""}>${MEDIA_CATEGORIES.map((c) => `<option value="${c}" ${u.category === c ? "selected" : ""}>${c}</option>`).join("")}</select>
+          <div class="hint">COVER and PROFILE are photo-only. Videos go under ADDITIONAL.</div></div>
+        <div class="field" style="margin:0"><label>DESCRIPTION</label>
+          <input id="media-description" type="text" placeholder="Optional -- can't be edited after upload" value="${escapeHtml(u.description)}" ${u.busy || u.category === "COVER" ? "disabled" : ""} />
+          ${u.category === "COVER" ? `<div class="hint">Cover photos can't have a description.</div>` : ""}</div>
+        ${
+          issues.length
+            ? `<div class="warn">${issues.map(escapeHtml).join("<br/>")}
+                <label style="display:flex;gap:6px;align-items:center;margin-top:8px;font-weight:600"><input id="media-override" type="checkbox" ${u.override ? "checked" : ""} /> Send anyway (to see what the API enforces)</label></div>`
+            : ""
+        }
+        <button class="btn-outline" data-action="upload-media" ${u.busy || !u.file || (issues.length && !u.override) ? "disabled" : ""}>
+          <span id="media-progress">${u.busy ? "Uploading…" : isDryRun() ? "Add to Google (skipped in dry run)" : `Add ${format === "VIDEO" ? "video" : "photo"} to Google`}</span></button>
+        ${u.error ? `<div class="warn">Upload failed: ${escapeHtml(u.error)}</div>` : ""}
+        ${
+          u.result
+            ? `<div class="lede" style="font-size:12px">Added as ${escapeHtml(u.result.mediaFormat)} (${escapeHtml(u.result.locationAssociation?.category ?? "")}).
+                ${u.result.googleUrl ? `<a href="${escapeHtml(u.result.googleUrl)}" target="_blank" rel="noopener">Open on Google</a>` : ""}
+                Google can take 24–48 hours to review it before it shows on Search and Maps.</div>`
+            : ""
+        }
+      </div>`;
+}
+
+function wireMediaUpload() {
+  const u = state.mediaUpload;
+  const fileInput = frameEl.querySelector("#media-file");
+  if (!fileInput) return;
+  fileInput.addEventListener("change", async () => {
+    u.file = fileInput.files?.[0] ?? null;
+    u.meta = null;
+    u.override = false;
+    u.error = null;
+    u.result = null;
+    if (u.file && mediaFormatOf(u.file) === "VIDEO" && PHOTO_ONLY_CATEGORIES.includes(u.category)) u.category = "ADDITIONAL";
+    render();
+    if (u.file) {
+      const file = u.file;
+      const meta = await readMediaMeta(file);
+      if (u.file !== file) return; // picked something else meanwhile
+      u.meta = meta;
+      logDiagnostic(`Media picked: ${file.name} (${file.type || "?"}, ${formatBytes(file.size)}${meta.width ? `, ${meta.width}×${meta.height}` : ""}${meta.duration ? `, ${meta.duration.toFixed(1)}s` : ""})`);
+      render();
+    }
+  });
+  frameEl.querySelector("#media-category")?.addEventListener("change", (e) => {
+    u.category = e.target.value;
+    render();
+  });
+  frameEl.querySelector("#media-description")?.addEventListener("input", (e) => (u.description = e.target.value));
+  frameEl.querySelector("#media-override")?.addEventListener("change", (e) => {
+    u.override = e.target.checked;
+    render();
+  });
+}
+
+function mediaParent() {
+  return `${V4_API}/${state.listing.account}/${state.listing.location.name}`;
+}
+
+async function loadMedia() {
+  try {
+    const data = await callGbp("media.list (v4)", "GET", `${mediaParent()}/media?pageSize=30`);
+    state.media = { items: data.mediaItems ?? [], total: data.totalMediaItemCount };
+  } catch (error) {
+    state.media = { error: error.message };
+  }
+  if (state.step === "manage") render();
+}
+
+/** Step 2 of the byte upload. XHR rather than fetch so we get progress events. */
+function sendMediaBytes(resourceName, file) {
+  return new Promise((resolve, reject) => {
+    const start = performance.now();
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `https://mybusiness.googleapis.com/upload/v1/media/${resourceName}?upload_type=media`, true);
+    xhr.setRequestHeader("Authorization", `Bearer ${state.accessToken}`);
+    if (file.type) xhr.setRequestHeader("Content-Type", file.type);
+    xhr.upload.addEventListener("progress", (event) => {
+      if (!event.lengthComputable) return;
+      const el = document.getElementById("media-progress");
+      if (el) el.textContent = `Uploading… ${Math.round((event.loaded / event.total) * 100)}%`;
+    });
+    xhr.onload = () => {
+      const ms = Math.round(performance.now() - start);
+      if (xhr.status >= 200 && xhr.status < 300) {
+        logDiagnostic(`media bytes upload: HTTP ${xhr.status} in ${ms}ms (${formatBytes(file.size)})`);
+        resolve();
+      } else {
+        let message = xhr.responseText.slice(0, 300);
+        try {
+          message = JSON.parse(xhr.responseText)?.error?.message ?? message;
+        } catch {
+          // not JSON
+        }
+        logDiagnostic(`media bytes upload: HTTP ${xhr.status} in ${ms}ms -- "${message}"`);
+        reject(new Error(`Byte upload failed (HTTP ${xhr.status}): ${message}`));
+      }
+    };
+    xhr.onerror = () => {
+      logDiagnostic("media bytes upload: NETWORK ERROR (possibly CORS on the upload endpoint).");
+      reject(new Error("Network error during byte upload (possibly CORS)."));
+    };
+    xhr.send(file);
+  });
+}
+
+async function uploadMedia() {
+  const u = state.mediaUpload;
+  if (!u.file || u.busy) return;
+  const format = mediaFormatOf(u.file);
+  const issues = mediaIssues(u);
+  if (issues.length) logDiagnostic(`Sending despite guideline issues: ${issues.join(" | ")}`);
+
+  const body = { mediaFormat: format, locationAssociation: { category: u.category } };
+  if (u.description.trim() && u.category !== "COVER") body.description = u.description.trim();
+
+  if (isDryRun()) {
+    logDiagnostic(`media.create: SKIPPED (dry run) -- would send ${JSON.stringify({ ...body, dataRef: { resourceName: "<from startUpload>" } })}`);
+    return;
+  }
+
+  u.busy = true;
+  u.error = null;
+  u.result = null;
+  render();
+  try {
+    const ref = await callGbp("media.startUpload", "POST", `${mediaParent()}/media:startUpload`, {});
+    if (!ref.resourceName) throw new Error("startUpload returned no resourceName.");
+    await sendMediaBytes(ref.resourceName, u.file);
+    const item = await callGbp(`media.create (${format})`, "POST", `${mediaParent()}/media`, { ...body, dataRef: { resourceName: ref.resourceName } });
+    u.result = item;
+    u.file = null;
+    u.meta = null;
+    u.description = "";
+    u.override = false;
+    loadMedia();
+  } catch (error) {
+    u.error = error.message;
+  } finally {
+    u.busy = false;
+    render();
+  }
+}
+
+async function deleteMedia(index) {
+  const item = state.media?.items?.[index];
+  if (!item) return;
+  await liveWriteOnly(`media.delete ${item.name}`, async () => {
+    try {
+      await callGbp("media.delete", "DELETE", `${V4_API}/${item.name}`);
+      state.media.items.splice(index, 1);
+      if (state.media.total) state.media.total -= 1;
+    } catch (error) {
+      state.mediaUpload.error = `Delete failed: ${error.message}`;
+    }
+    render();
+  });
 }
 
 async function completeCode(pin) {
