@@ -2,8 +2,11 @@
  * Patient app (boards P1-P4 of the discussion doc): doctor profile -> date and
  * slot -> review (refund rule shown before paying) -> Razorpay -> confirmation;
  * reminders with Confirm / Cancel; the 2-hour check-in time; "I'm leaving
- * now" location sharing; "I'll be late"; QR check-in and token; the live wait
- * estimate; the arrival call (Voice AI or IVR) answered on this phone.
+ * now" trip planner (ways to get there with time, cost and a best pick, each
+ * with Google Maps directions) and location sharing; "I'll be late"; QR
+ * check-in and token; the live wait estimate and place in the dynamic queue;
+ * the arrival call answered on this phone -- a live Claude conversation with
+ * browser speech when the server has a key, otherwise scripted (or IVR).
  *
  * Payments follow the clinic's setting (prepaid only, patient's choice, or
  * pay at clinic). A prepaid booking holds the slot while paying and is
@@ -15,9 +18,10 @@ import { getState, update, subscribe } from "../shared/store.js";
 import {
   slotsFor, rangesFor, nextAvailable, slotLabel, createAppointment, confirmBooking, markPaid, markFailed,
   refundRule, refundQuote, requestRefund, cancelAppointment, checkIn, estimate, estimateText, finishCall,
-  startSharing, locationFresh, holdsSlot, isActive, notArrived, doctorOf, patientOf, apptMs, notify, avgConsult,
-  TRAVEL_MODES, today
+  startSharing, startTrip, locationFresh, holdsSlot, isActive, notArrived, doctorOf, patientOf, apptMs, notify, avgConsult,
+  arrivalOf, checkInTime, etaMin, callFacts, TRAVEL_MODES, today
 } from "../shared/flow.js";
+import { planTrip, costText, mapsUrl, travelMin, distanceKm, CLINIC_LL, DEMO_ORIGINS } from "../shared/trip.js";
 import { pay, reconcile, gatewayInfo, paySimulatedLink, startBackgroundWork, payerOf } from "../shared/payments.js";
 import { mountSimBar, paymentBadge, toast } from "../shared/ui.js";
 import { receiptHtml } from "../shared/receipt.js";
@@ -38,9 +42,15 @@ const ui = {
   busy: null,
   sheet: null, // "cancel" | "scan" | "late"
   dropCallback: false,
-  startKm: 5,
   call: null, // { apptId, callId, step, transcript: [] }
-  gateway: null
+  gateway: null,
+  ai: null, // /api/ai-call/config
+  eleven: null, // /api/elevenlabs/config
+  voice: true, // speak the AI's lines
+  routes: null, // /api/routes/config
+  // origin: where the trip starts (GPS fix near Chennai, else a demo
+  // neighbourhood). google: Routes API result for that origin.
+  trip: { origin: null, located: false, demo: "t_nagar", google: null, googleFor: null, googleBusy: false, googleError: null, pick: null, open: null, share: true, have: { two_wheeler: true, car: false } }
 };
 const seen = new Set();
 
@@ -231,37 +241,113 @@ function bookPayAtClinic() {
 
 // ---------- location ----------
 
-function distanceKm(lat1, lng1, lat2, lng2) {
-  const r = Math.PI / 180;
-  const a = Math.sin(((lat2 - lat1) * r) / 2) ** 2 + Math.cos(lat1 * r) * Math.cos(lat2 * r) * Math.sin(((lng2 - lng1) * r) / 2) ** 2;
-  return 12742 * Math.asin(Math.sqrt(a));
-}
 
-// The phone's real permission prompt. A real fix within 40 km of the clinic
-// is used as the starting distance; anything else (or no fix) uses the demo
-// distance from the controls, since the movement itself is simulated.
-function shareLocation(id, mode) {
-  ui.busy = "Waiting for location permission…";
+// The phone's real permission prompt. A fix within 40 km of the clinic is the
+// trip's starting point; otherwise (or with location off) a demo neighbourhood.
+function locate() {
+  ui.trip.located = "asking";
   render();
-  const start = km => {
-    update(s => startSharing(s, findAppt(s, id), mode, km));
-    go("appt", { apptId: id });
-    toast("Sharing location with the clinic", "Only until you check in.");
+  const done = (origin, why) => {
+    Object.assign(ui.trip, { origin, located: why });
+    fetchRoutes();
+    render();
   };
-  if (!navigator.geolocation) return start(ui.startKm);
+  const demo = () => ({ ...DEMO_ORIGINS[ui.trip.demo] });
+  if (!navigator.geolocation) return done(demo(), "demo");
+  // The permission prompt can sit unanswered; don't wait on it. A fix that
+  // arrives later still replaces the demo start.
+  setTimeout(() => ui.trip.located === "asking" && done(demo(), "waiting"), 5000);
   navigator.geolocation.getCurrentPosition(
     pos => {
-      const km = distanceKm(pos.coords.latitude, pos.coords.longitude, 13.0604, 80.2496);
-      start(km <= 40 ? Math.max(0.5, km) : ui.startKm);
+      const here = { label: "Your location", lat: pos.coords.latitude, lng: pos.coords.longitude };
+      if (distanceKm(here, CLINIC_LL) <= 40) done(here, "gps");
+      else done(demo(), "far");
     },
-    () => {
-      ui.busy = null;
-      ui.error = "Location is off. That's fine: the clinic may call you to ask how long you'll take.";
-      ui.locationDenied = true;
-      render();
-    },
-    { timeout: 10000, maximumAge: 60000 }
+    () => done(demo(), "denied"),
+    { timeout: 8000, maximumAge: 60000 }
   );
+}
+
+function useDemoOrigin(key) {
+  ui.trip.demo = key;
+  if (ui.trip.located !== "gps") {
+    ui.trip.origin = { ...DEMO_ORIGINS[key] };
+    ui.trip.located = ui.trip.located || "demo";
+    fetchRoutes();
+  }
+  render();
+}
+
+// Real times, distances, tolls and transit fares from the Google Maps Routes
+// API (through /api/routes so the key stays on the server). Without a key the
+// planner uses its built-in estimates.
+async function fetchRoutes() {
+  const o = ui.trip.origin;
+  if (!o || !ui.routes?.live) return;
+  const forKey = `${o.lat.toFixed(3)},${o.lng.toFixed(3)}`;
+  if (ui.trip.googleFor === forKey || ui.trip.googleBusy) return;
+  Object.assign(ui.trip, { googleBusy: true, googleError: null });
+  render();
+  try {
+    const res = await fetch("/api/routes/compute", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ origin: { lat: o.lat, lng: o.lng }, destination: CLINIC_LL })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error ?? `Routes API ${res.status}`);
+    Object.assign(ui.trip, { google: data, googleFor: forKey });
+  } catch (err) {
+    Object.assign(ui.trip, { google: null, googleFor: null, googleError: err.message });
+  }
+  ui.trip.googleBusy = false;
+  render();
+}
+
+const tripOrigin = () => ui.trip.origin ?? { ...DEMO_ORIGINS[ui.trip.demo] };
+const tripKm = () => distanceKm(tripOrigin(), CLINIC_LL);
+const googleFresh = () => {
+  const o = tripOrigin();
+  return ui.trip.google && ui.trip.googleFor === `${o.lat.toFixed(3)},${o.lng.toFixed(3)}` ? ui.trip.google : null;
+};
+
+// When they need to be at the clinic to keep their place: the check-in time
+// (expected start - 10 min, not earlier than slot - 15) while it's ahead;
+// within grace, the end of grace; after that, as soon as possible.
+function arriveBy(s, a) {
+  const now = s.clock.nowMs;
+  if (a.status === "reserved") return a.graceUntil;
+  if (a.status === "late") return now;
+  return Math.max(now, a.date === today(s) ? checkInTime(s, a) : apptMs(a) - 10 * MIN);
+}
+
+function tripPlan(s, a) {
+  const by = arriveBy(s, a);
+  const onDay = a.date === today(s);
+  const departMs = onDay ? s.clock.nowMs : by - 30 * MIN;
+  const plan = planTrip({ straightKm: tripKm(), departMs, arriveBy: by, origin: tripOrigin(), google: googleFresh() });
+  plan.options = plan.options.filter(o => !(o.key in ui.trip.have) || ui.trip.have[o.key]);
+  if (!plan.options.includes(plan.best)) plan.best = plan.options[0];
+  return { ...plan, onDay };
+}
+
+function beginTrip(id) {
+  const s = getState();
+  const a = findAppt(s, id);
+  const plan = tripPlan(s, a);
+  const o = plan.options.find(x => x.key === ui.trip.pick) ?? plan.best;
+  const km = tripKm();
+  update(st => {
+    const x = findAppt(st, id);
+    startTrip(st, x, { mode: o.key, etaMs: st.clock.nowMs + o.totalMin * MIN, distanceKm: km, cost: o.cost, source: o.source });
+    if (ui.trip.share) {
+      startSharing(st, x, o.key, km);
+      // Keep the simulated movement on Google's pace for this route.
+      x.location.paceFactor = o.rideMin / travelMin(o.key, km, st.clock.nowMs);
+    }
+  });
+  go("appt", { apptId: id });
+  toast(`On your way by ${o.label.toLowerCase()}`, ui.trip.share ? "Sharing your location with the clinic until you check in." : "The clinic knows when to expect you.");
 }
 
 // ---------- arrival call ----------
@@ -270,7 +356,9 @@ const SCRIPTS = {
   en: {
     hello: (s, a) => `Hello ${patientOf(s, a).name.split(" ")[0]}, this is Ninto calling for ${s.clinic.name} about your ${slotLabel(s, a)} appointment with ${doctorOf(s, a).name}. How long will it take you to reach the clinic?`,
     replies: [["10", "I'll be there in 10 minutes"], ["20", "About 20 minutes"], ["30", "About 30 minutes"], ["here", "I'm already at the clinic"], ["cancel", "I can't come, please cancel"]],
-    thanks: n => `Thanks, I've told the clinic you'll be there in about ${n} minutes. Is there anything you'd like the doctor to know before your visit?`,
+    askMode: n => `Thanks, about ${n} minutes. How are you travelling?`,
+    modes: [["auto", "By auto"], ["two_wheeler", "On my two-wheeler"], ["cab", "In a cab"], ["transit", "By bus or metro"], ["walk", "Walking"]],
+    thanks: n => `Got it. I've told the clinic you'll be there in about ${n} minutes, and you'll be fitted in by when you arrive. Is there anything you'd like the doctor to know before your visit?`,
     noMore: "No, that's all",
     here: "Great, please scan the QR at the counter to check in.",
     confirmCancel: q => `Should I cancel your appointment? ${q}`,
@@ -284,7 +372,9 @@ const SCRIPTS = {
   ta: {
     hello: (s, a) => `வணக்கம் ${patientOf(s, a).name.split(" ")[0]}, ${s.clinic.name} சார்பாக Ninto அழைக்கிறது. ${doctorOf(s, a).name} உடனான உங்கள் ${slotLabel(s, a)} சந்திப்பு பற்றி. கிளினிக்கை அடைய எவ்வளவு நேரம் ஆகும்?`,
     replies: [["10", "10 நிமிடத்தில் வந்துவிடுவேன்"], ["20", "சுமார் 20 நிமிடம்"], ["30", "சுமார் 30 நிமிடம்"], ["here", "நான் ஏற்கனவே கிளினிக்கில் இருக்கிறேன்"], ["cancel", "வர முடியாது, ரத்து செய்யுங்கள்"]],
-    thanks: n => `நன்றி. நீங்கள் சுமார் ${n} நிமிடத்தில் வருவீர்கள் என்று கிளினிக்கிடம் சொல்லிவிட்டேன். மருத்துவரிடம் சொல்ல வேண்டியது ஏதாவது உள்ளதா?`,
+    askMode: n => `நன்றி, சுமார் ${n} நிமிடம். எப்படி வருகிறீர்கள்?`,
+    modes: [["auto", "ஆட்டோவில்"], ["two_wheeler", "என் டூ-வீலரில்"], ["cab", "கேபில்"], ["transit", "பஸ் அல்லது மெட்ரோவில்"], ["walk", "நடந்து"]],
+    thanks: n => `சரி. நீங்கள் சுமார் ${n} நிமிடத்தில் வருவீர்கள் என்று கிளினிக்கிடம் சொல்லிவிட்டேன். மருத்துவரிடம் சொல்ல வேண்டியது ஏதாவது உள்ளதா?`,
     noMore: "இல்லை, அவ்வளவுதான்",
     here: "சரி, கவுண்டரில் உள்ள QR-ஐ ஸ்கேன் செய்து செக்-இன் செய்யுங்கள்.",
     confirmCancel: q => `உங்கள் சந்திப்பை ரத்து செய்யட்டுமா? ${q}`,
@@ -318,35 +408,238 @@ const IVR = {
   }
 };
 
+// Calls that ring in this app (real phone calls ring the patient's phone).
 function ringingCall(s) {
   for (const a of myAppts(s)) {
     const call = a.calls.at(-1);
-    if (call?.status === "ringing") return { a, call };
+    if (call?.status === "ringing" && call.provider !== "elevenlabs_phone") return { a, call };
   }
   return null;
+}
+
+// Engine for an in-app call: what the clinic chose, if the server can run it.
+function engineFor(call) {
+  if (call.type === "ivr") return "ivr";
+  if (call.provider === "elevenlabs" && ui.eleven?.live && ui.eleven?.agent) return "elevenlabs";
+  if ((call.provider === "claude" || call.provider === "elevenlabs") && ui.ai?.live) return "claude";
+  return "script";
 }
 
 function answerCall() {
   const s = getState();
   const { a, call } = ringingCall(s);
-  const bot = call.type === "ivr" ? IVR[call.lang].menu(s, a) : SCRIPTS[call.lang].hello(s, a);
+  const engine = engineFor(call);
+  const ai = engine === "claude";
   // Answering stops the no-answer timer.
   update(st => {
-    findAppt(st, a.id).calls.at(-1).status = "in_progress";
+    Object.assign(findAppt(st, a.id).calls.at(-1), { status: "in_progress", engine });
   });
-  ui.call = { apptId: a.id, callId: call.id, type: call.type, lang: call.lang, step: call.type === "ivr" ? "menu" : "ask", transcript: [{ who: "bot", text: bot }], result: null, note: "" };
+  ui.call = { apptId: a.id, callId: call.id, type: call.type, lang: call.lang, engine, ai, step: call.type === "ivr" ? "menu" : "ask", transcript: [], result: null, note: "", verdict: null, thinking: false, error: null };
+  if (call.provider === "elevenlabs" && engine !== "elevenlabs") ui.call.error = `ElevenLabs isn't set up on the server (${ui.eleven?.reason ?? "no config"}), so this call uses ${ai ? "Claude with browser speech" : "the script"}.`;
+  if (engine === "elevenlabs") return elevenStart();
+  if (ai) return aiTurn();
+  botSay(call.type === "ivr" ? IVR[call.lang].menu(s, a) : SCRIPTS[call.lang].hello(s, a));
   render();
 }
 
 function endCall(result) {
   const { apptId, transcript, note } = ui.call;
-  update(s => finishCall(s, findAppt(s, apptId), { ...result, transcript, note }));
+  stopListening();
+  update(s => finishCall(s, findAppt(s, apptId), { ...result, transcript, note: result.note ?? note }));
   ui.call = null;
   render();
 }
 
 function botSay(text) {
   ui.call.transcript.push({ who: "bot", text });
+  speak(text, ui.call.lang);
+}
+
+// ---------- live AI call (Claude through /api/ai-call) ----------
+
+// What the AI knows about this appointment and the queue right now.
+const callContext = (s, a) => callFacts(s, a, ui.call.lang);
+
+// ---------- ElevenLabs call in the app (voice agent with Claude as its LLM) ----------
+
+// ElevenLabs' browser SDK, loaded only when a call needs it.
+const ELEVEN_SDK = "https://cdn.jsdelivr.net/npm/@elevenlabs/client@1.30.0/+esm";
+let elevenSession = null;
+
+async function elevenStart() {
+  const c = ui.call;
+  c.status = "Connecting…";
+  render();
+  try {
+    const [{ Conversation }, signed] = await Promise.all([
+      import(ELEVEN_SDK),
+      fetch("/api/elevenlabs/signed-url").then(async r => {
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error ?? `signed URL failed (${r.status})`);
+        return d;
+      })
+    ]);
+    const s = getState();
+    const vars = callFacts(s, findAppt(s, c.apptId), c.lang);
+    elevenSession = await Conversation.startSession({
+      signedUrl: signed.signedUrl,
+      dynamicVariables: Object.fromEntries(Object.entries(vars).filter(([, v]) => ["string", "number", "boolean"].includes(typeof v))),
+      onMessage: m => {
+        if (ui.call !== c || !m.message) return;
+        c.transcript.push({ who: (m.role ?? m.source) === "user" ? "me" : "bot", text: m.message });
+        render();
+      },
+      onModeChange: ({ mode }) => {
+        if (ui.call !== c) return;
+        c.status = mode === "speaking" ? "Assistant speaking…" : "Listening…";
+        render();
+      },
+      onDisconnect: () => ui.call === c && elevenFinish(c),
+      onError: err => {
+        if (ui.call !== c) return;
+        c.error = `ElevenLabs: ${err?.message ?? err}`;
+        render();
+      }
+    });
+    c.conversationId = elevenSession.getId();
+    c.status = "Listening…";
+    render();
+  } catch (err) {
+    if (ui.call !== c) return;
+    // Fall back so the patient isn't left hanging.
+    Object.assign(c, { engine: ui.ai?.live ? "claude" : "script", ai: !!ui.ai?.live, status: null, error: `ElevenLabs unavailable (${err.message}). Continuing ${ui.ai?.live ? "with Claude" : "with the scripted call"}.` });
+    if (c.ai) return aiTurn();
+    const s = getState();
+    botSay(SCRIPTS[c.lang].hello(s, findAppt(s, c.apptId)));
+    render();
+  }
+}
+
+// Call over: wait for ElevenLabs' post-call analysis (coming, ETA, mode, note,
+// summary), then record it on the appointment.
+async function elevenFinish(c) {
+  if (c.finishing) return;
+  c.finishing = true;
+  c.status = "Call ended. Getting the result…";
+  render();
+  try {
+    await elevenSession?.endSession();
+  } catch {}
+  elevenSession = null;
+  let last = null;
+  for (let i = 0; i < 30 && c.conversationId; i++) {
+    try {
+      const r = await fetch(`/api/elevenlabs/conversation/${c.conversationId}`);
+      last = await r.json();
+      if (last.done) break;
+    } catch {}
+    await new Promise(res => setTimeout(res, 2000));
+  }
+  const result = last?.done ? last.result : { outcome: c.transcript.some(m => m.who === "me") ? "unsure" : "no_answer", engine: "elevenlabs", summary: "Call ended before ElevenLabs returned a result." };
+  ui.call = c;
+  c.transcript = last?.transcript?.length ? last.transcript : c.transcript;
+  endCall({ ...result, costUsd: last?.costUsd ?? null, durationSecs: last?.durationSecs ?? null });
+}
+
+function verdictResult(v) {
+  if (!v) return { outcome: "no_answer" };
+  const outcome = v.outcome === "in_progress" ? (v.coming === "yes" && v.eta_min >= 0 ? "eta" : v.coming === "unknown" ? "no_answer" : "unsure") : v.outcome;
+  return {
+    outcome,
+    etaMin: v.eta_min >= 0 ? v.eta_min : null,
+    coming: v.coming === "unknown" ? null : v.coming,
+    mode: v.travel_mode !== "unknown" ? v.travel_mode : null,
+    note: v.note_for_doctor,
+    summary: v.summary_for_clinic,
+    engine: "claude"
+  };
+}
+
+async function aiTurn() {
+  const c = ui.call;
+  c.thinking = true;
+  render();
+  try {
+    const s = getState();
+    const res = await fetch("/api/ai-call/turn", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ context: callContext(s, findAppt(s, c.apptId)), transcript: c.transcript })
+    });
+    const v = await res.json();
+    if (!res.ok) throw new Error(v.error ?? `AI call failed (${res.status})`);
+    if (ui.call !== c) return; // hung up meanwhile
+    c.thinking = false;
+    c.verdict = v;
+    botSay(v.say);
+    render();
+    if (v.end_call) setTimeout(() => ui.call === c && endCall(verdictResult(v)), 1800);
+  } catch (err) {
+    if (ui.call !== c) return;
+    // Carry on with the scripted call rather than drop the patient.
+    Object.assign(c, { ai: false, thinking: false, step: "ask", error: `Live AI unavailable (${err.message}). Continuing with the scripted call.` });
+    const s = getState();
+    botSay(SCRIPTS[c.lang].hello(s, findAppt(s, c.apptId)));
+    render();
+  }
+}
+
+function aiReply(text) {
+  if (!text || ui.call.thinking) return;
+  ui.call.transcript.push({ who: "me", text });
+  aiTurn();
+}
+
+const AI_SUGGESTIONS = {
+  en: ["Yes, I'm on my way. About 15 minutes by auto.", "I'm running late, maybe half an hour.", "I'm already at the clinic.", "I can't make it today.", "Yes, please cancel it.", "No, that's all. Thanks."],
+  ta: ["ஆமாம், வந்துகொண்டிருக்கிறேன். ஆட்டோவில் சுமார் 15 நிமிடம்.", "கொஞ்சம் தாமதம், அரை மணி நேரம் ஆகும்.", "நான் கிளினிக்கில் இருக்கிறேன்.", "இன்று வர முடியாது.", "ஆம், ரத்து செய்யுங்கள்.", "இல்லை, அவ்வளவுதான். நன்றி."]
+};
+
+// Browser speech: the AI's lines are spoken, and the patient can talk back
+// (Chrome / Edge / Safari speech recognition) or tap / type a reply.
+function speak(text, lang) {
+  if (!ui.voice || !window.speechSynthesis) return;
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = lang === "ta" ? "ta-IN" : "en-IN";
+  u.rate = 1.05;
+  speechSynthesis.speak(u);
+}
+
+const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+let recognizer = null;
+
+function listen() {
+  if (!Recognition || !ui.call) return;
+  stopListening();
+  window.speechSynthesis?.cancel();
+  recognizer = new Recognition();
+  recognizer.lang = ui.call.lang === "ta" ? "ta-IN" : "en-IN";
+  recognizer.interimResults = false;
+  recognizer.onresult = e => {
+    const text = e.results[0]?.[0]?.transcript?.trim();
+    ui.call.listening = false;
+    if (!text) return render();
+    if (ui.call.ai) aiReply(text);
+    else voiceReply(ui.call.step === "note" ? "note" : ui.call.step === "confirm_cancel" ? (/yes|ஆம்/i.test(text) ? "yes" : "no") : "text", text);
+  };
+  recognizer.onerror = recognizer.onend = () => {
+    if (ui.call?.listening) {
+      ui.call.listening = false;
+      render();
+    }
+  };
+  ui.call.listening = true;
+  recognizer.start();
+  render();
+}
+
+function stopListening() {
+  try {
+    recognizer?.abort();
+  } catch {}
+  recognizer = null;
+  window.speechSynthesis?.cancel();
 }
 
 function voiceReply(key, text) {
@@ -369,6 +662,10 @@ function voiceReply(key, text) {
     botSay(L.bye);
     return endCall(c.result);
   }
+  if (c.step === "mode" && key === "text") {
+    key = /auto|ஆட்டோ/i.test(text) ? "auto" : /bike|scooter|two|டூ/i.test(text) ? "two_wheeler" : /cab|taxi|uber|ola|கேப்/i.test(text) ? "cab"
+      : /bus|metro|train|பஸ்|மெட்ரோ/i.test(text) ? "transit" : /walk|நட/i.test(text) ? "walk" : /car|கார்/i.test(text) ? "car" : "unknown";
+  }
   // Free text: pull out a number of minutes, or the intent.
   if (key === "text") {
     const n = text.match(/(\d{1,3})/)?.[1];
@@ -389,9 +686,15 @@ function voiceReply(key, text) {
     botSay(L.confirmCancel(refundQuote(s, a, "patient").text));
     return render();
   }
+  if (c.step === "mode") {
+    c.result.mode = key === "unknown" ? null : key;
+    c.step = "note";
+    botSay(L.thanks(c.result.etaMin));
+    return render();
+  }
   c.result = { outcome: "eta", etaMin: Number(key) };
-  c.step = "note";
-  botSay(L.thanks(key));
+  c.step = "mode";
+  botSay(L.askMode(key));
   render();
 }
 
@@ -630,22 +933,31 @@ function screenReceipt(s) {
     </div>`;
 }
 
-function locationCard(s, a) {
+// On the appointment screen before arrival: the trip in progress (with live
+// location if shared), or a nudge into the planner with its best pick.
+function tripCard(s, a) {
   const loc = a.location;
-  if (loc?.sharing) {
-    const fresh = locationFresh(s, a);
+  const arr = arrivalOf(s, a);
+  if (a.trip || loc?.sharing) {
+    const mode = a.trip?.mode ?? loc.mode;
+    const fresh = loc?.sharing && locationFresh(s, a);
     return `<div class="card tint">
-      <div class="between"><div class="name">Sharing location with the clinic</div><span class="badge ${fresh ? "ok" : "amber"}">${fresh ? "Live" : "No update"}</span></div>
-      <div class="sub">${esc(TRAVEL_MODES[loc.mode])} · about ${loc.distanceKm.toFixed(1)} km away · updated ${tms(loc.updatedAt)}</div>
-      <div class="sub">Sharing stops when you check in, and is only for today's appointment.</div>
-      <button class="btn outline sm" style="align-self:flex-start" data-action="stop-sharing">Stop sharing</button>
+      <div class="between"><div class="name">On your way · ${esc(TRAVEL_MODES[mode] ?? "")}</div>${loc?.sharing ? `<span class="badge ${fresh ? "ok" : "amber"}">${fresh ? "Location live" : "No update"}</span>` : `<span class="badge info">Location off</span>`}</div>
+      ${arr ? `<div class="sub" style="color:var(--ink)"><b>Arriving around ${tms(arr.etaMs)}</b>${loc?.sharing ? ` · ${loc.distanceKm.toFixed(1)} km to go` : ""}</div>` : ""}
+      <div class="sub">${loc?.sharing ? "The clinic sees roughly how far away you are, until you check in." : "The clinic is expecting you at that time."}</div>
+      <div class="actions"><a class="btn primary sm" href="${esc(mapsUrl(mode, ui.trip.origin))}" target="_blank" rel="noopener">Navigate in Google Maps</a>
+        ${loc?.sharing ? `<button class="btn outline sm" data-action="stop-sharing">Stop sharing</button>` : ""}
+        <button class="btn ghost sm" data-action="sheet" data-sheet="late">Running late?</button></div>
     </div>`;
   }
+  const plan = tripPlan(s, a);
+  const b = plan.best;
   return `<div class="card">
-    <div class="name">On your way?</div>
-    <div class="sub">Let the clinic know you've left. Sharing your location is optional.</div>
-    <div class="actions"><button class="btn primary sm" data-action="nav" data-to="leaving">I'm leaving now</button>
-    <button class="btn outline sm" data-action="sheet" data-sheet="late">I'll be late</button></div>
+    <div class="name">Getting there</div>
+    ${b ? `<div class="row"><div style="font-size:24px">${b.icon}</div><div><div class="sub" style="color:var(--ink)"><b>${esc(b.label)}</b> · ${b.totalMin} min · ${costText(b.cost)}</div>
+      <div class="sub">${plan.onDay ? (b.leaveBy > s.clock.nowMs + MIN ? `Leave by ${tms(b.leaveBy)} to arrive by ${tms(plan.arriveBy)}` : `Leave now to arrive around ${tms(b.arriveMs)}`) : `Leave around ${tms(b.leaveBy)} on the day`} · ${esc(plan.traffic.label.toLowerCase())}</div></div></div>` : ""}
+    <div class="actions"><button class="btn primary sm" data-action="nav" data-to="trip">${plan.onDay ? "Plan my trip" : "See ways to get there"}</button>
+    ${plan.onDay ? `<button class="btn outline sm" data-action="sheet" data-sheet="late">I'll be late</button>` : ""}</div>
     ${a.lateNote ? `<div class="sub">You told the clinic: about ${a.lateNote.minutes} min late (${tms(a.lateNote.at)}).</div>` : ""}
   </div>`;
 }
@@ -673,12 +985,14 @@ function screenAppt(s) {
     if (a.status === "late") parts.push(`<div class="warn">Your reserved slot has passed. Please check in at reception and you'll be seen as soon as possible.</div>`);
     const est = estimate(s, a);
     const txt = estimateText(est, false);
-    parts.push(`<div class="card estimate"><div class="section-label">Live estimate</div><div class="head">${esc(txt.head)}</div><div class="subline">${esc(txt.sub)}</div>
-      <div class="sub">Booked for ${esc(slotLabel(s, a))}. Expected to be seen around ${tms(est.startMs)}. The doctor is taking about ${est.avg} min per patient today.</div>
-      ${a.checkInBy ? `<div class="sub" style="color:var(--ink)"><b>Check in by ${tms(a.checkInBy)}</b></div>` : ""}</div>`);
-    parts.push(locationCard(s, a));
+    const arr = arrivalOf(s, a);
+    parts.push(`<div class="card estimate"><div class="section-label">Your place in the queue</div><div class="head">${est.unknown ? "Fitted in when you arrive" : `#${est.position} · in around ${tms(est.projectedMs)}`}</div><div class="subline">${esc(txt.head)}</div>
+      <div class="sub">Booked for ${esc(slotLabel(s, a))}. ${arr?.firm ? `Based on you arriving around ${tms(arr.etaMs)}.` : "Assuming you arrive on time."} If you're late, you're fitted in by when you arrive, not sent to the end. The doctor is taking about ${est.avg} min per patient today.</div>
+      ${a.checkInBy && a.status === "booked" ? `<div class="sub" style="color:var(--ink)"><b>Check in by ${tms(a.checkInBy)}</b></div>` : ""}</div>`);
+    parts.push(tripCard(s, a));
   } else if (a.status === "booked") {
     parts.push(`<div class="card"><div class="name">${dateLabel(a.date, today(s))}, ${esc(slotLabel(s, a))}</div><div class="sub">We'll remind you a day before and about 2 hours before, with your check-in time. Check-in and the live wait estimate open on the day.</div></div>`);
+    parts.push(tripCard(s, a));
   } else if (a.status === "pending_payment" || a.status === "expired") {
     parts.push(`<div class="warn">This booking isn't confirmed: ${esc(a.payment.error ?? "payment pending")}.</div>
       <div class="actions"><button class="btn primary sm" data-action="retry">Try again</button>${a.payment.orderId ? `<button class="btn outline sm" data-action="recheck">Re-check payment</button>` : ""}</div>`);
@@ -714,22 +1028,47 @@ function screenAppt(s) {
     </div>` : ""}`;
 }
 
-function screenLeaving(s) {
+// Trip planner: every sensible way to get there with time, cost and arrival,
+// the best pick explained, Google Maps directions for each, and Start trip.
+function screenTrip(s) {
   const a = findAppt(s, ui.apptId);
-  ui.mode ??= null;
-  return `${topbar("I'm leaving now", "appt")}
+  if (ui.trip.located === false) setTimeout(locate);
+  const plan = tripPlan(s, a);
+  const pick = plan.options.find(o => o.key === ui.trip.pick) ?? plan.best;
+  const now = s.clock.nowMs;
+  const gps = ui.trip.located === "gps";
+  const where = ui.trip.located === "asking" ? "Finding you…" : gps ? "From your current location"
+    : `${{ denied: "Location is off. ", far: "You're far from the clinic. ", waiting: "No location yet. " }[ui.trip.located] ?? ""}Demo start: <select data-action-change="trip-origin" aria-label="Demo starting point">${Object.entries(DEMO_ORIGINS).map(([k, o]) => `<option value="${k}" ${k === ui.trip.demo ? "selected" : ""}>${esc(o.label)}</option>`).join("")}</select>`;
+  const srcLine = plan.source === "google" ? `🗺️ Times from Google Maps${plan.onDay ? ", live traffic" : ""}`
+    : ui.trip.googleBusy ? "🗺️ Asking Google Maps…" : ui.trip.googleError ? `Estimated times (Google Maps failed: ${esc(ui.trip.googleError)})` : `Estimated times${ui.routes && !ui.routes.live ? " · Google Maps key not set yet" : ""} · 🚦 ${esc(plan.traffic.label)}`;
+  const breakup = o => `<details class="breakup" ${ui.trip.open === o.key ? "open" : ""} data-key="${o.key}"><summary>Cost breakup</summary>
+      ${o.breakup.lines.length ? `<table>${o.breakup.lines.map(l => `<tr><td>${esc(l.label)}${l.detail ? `<div class="s">${esc(l.detail)}</div>` : ""}</td><td>₹${l.amount}</td></tr>`).join("")}
+        <tr class="tot"><td>Total</td><td>${costText(o.cost)}</td></tr></table>` : ""}
+      <div class="s">${esc(o.breakup.note)}</div></details>`;
+  const row = o => `<div class="choice trip ${o === pick ? "on" : ""}" data-action="trip-pick" data-v="${o.key}">
+      <div class="ticon">${o.icon}</div>
+      <div style="flex:1;min-width:0">
+        <div class="between"><div class="t">${esc(o.label)}</div><div class="t">${costText(o.cost)}</div></div>
+        <div class="s">${o.totalMin} min${o.wait ? ` (incl. ~${o.wait} min to get going)` : ""} · ${o.km.toFixed(1)} km · arrive ${tms(plan.onDay ? o.arriveMs : o.leaveBy + o.totalMin * MIN)}</div>
+        ${o.transitLines.length ? `<div class="s">${esc(o.transitLines.join(" → "))}${o.walkMin ? ` · ${o.walkMin} min walking` : ""}</div>` : ""}
+        <div class="s">${plan.onDay ? (o.onTime ? (o.leaveBy > now + MIN ? `Leave by ${tms(o.leaveBy)} · ${o.spareMin} min spare` : `Leave now · ${o.spareMin} min spare`) : `<span style="color:var(--warn-ink)">About ${-o.spareMin} min after ${tms(plan.arriveBy)}</span>`) : `Leave by ${tms(o.leaveBy)}`}</div>
+        ${o.tags.length ? `<div class="actions" style="margin-top:4px">${o.tags.map(t => `<span class="badge ${t === "Best pick" ? "ok" : "info"}">${t}</span>`).join("")}</div>` : ""}
+        ${o.why ? `<div class="s" style="color:var(--accent-dark)">${esc(o.why)}</div>` : ""}
+        ${breakup(o)}
+      </div></div>`;
+  return `${topbar("Getting there", "appt")}
     <div class="body">
-      <div class="h1">Let the clinic know you're on the way</div>
-      <div class="lede">If you share your location, the clinic can see roughly how far away you are, so they can plan the queue around you. We won't tell you when to leave: you know your route best.</div>
-      <div class="note">• Only shared until you check in<br>• Only for today's appointment (${esc(slotLabel(s, a))})<br>• You can stop sharing at any time</div>
-      <div class="section-label">How are you travelling? (optional)</div>
-      ${Object.entries(TRAVEL_MODES).map(([k, v]) => `<div class="choice ${ui.mode === k ? "on" : ""}" data-action="mode" data-v="${k}"><input type="radio" ${ui.mode === k ? "checked" : ""} tabindex="-1" /><div class="t">${v}</div></div>`).join("")}
-      ${ui.error ? `<div class="warn">${esc(ui.error)}</div>` : ""}
-      ${ui.locationDenied ? `<button class="btn outline sm" style="align-self:flex-start" data-action="share-demo">Demo: use a simulated location instead</button>` : ""}
+      <div class="h1">${plan.onDay ? (a.status === "late" ? "Get there as soon as you can" : `Be there by ${tms(plan.arriveBy)}`) : `Be there by ${tms(plan.arriveBy)} on ${dateLabel(a.date, today(s))}`}</div>
+      <div class="lede">${a.status === "late" ? "Your slot has passed, but you won't go to the end of the line: you're fitted in by when you arrive." : plan.onDay ? "That's when the doctor is likely to reach you, based on how the queue is moving. Arrive later and you're fitted in by your arrival time, not sent to the end." : "Times use the usual traffic for that hour. On the day, this updates with the live queue."}</div>
+      <div class="sub">📍 ${where} · ${tripKm().toFixed(1)} km as the crow flies</div>
+      <div class="sub">${srcLine}</div>
+      <div class="actions">${[["two_wheeler", "🛵 I have a two-wheeler"], ["car", "🚗 I have a car"]].map(([k, l]) => `<span class="chip ${ui.trip.have[k] ? "on" : ""}" data-action="trip-have" data-v="${k}">${l}</span>`).join("")}</div>
+      ${plan.options.map(row).join("") || `<div class="note">No routes found from here.</div>`}
+      ${plan.onDay ? `<label class="choice ${ui.trip.share ? "on" : ""}" data-action="trip-share"><input type="checkbox" ${ui.trip.share ? "checked" : ""} tabindex="-1" /><div><div class="t">Share my location with the clinic</div><div class="s">Only until you check in, only for today. The queue plans around you more accurately.</div></div></label>` : ""}
     </div>
     <div class="footer">
-      <button class="btn primary block" data-action="share" ${ui.busy ? "disabled" : ""}>${ui.busy ? esc(ui.busy) : "Share my location"}</button>
-      <button class="btn ghost block" data-action="nav" data-to="appt">Not now</button>
+      ${pick ? `<a class="btn outline block" href="${esc(pick.url)}" target="_blank" rel="noopener">Open ${esc(pick.label.toLowerCase())} route in Google Maps</a>` : ""}
+      ${plan.onDay && pick ? `<button class="btn primary block" data-action="trip-start">I'm leaving now by ${esc(pick.label.toLowerCase())}</button>` : ""}
     </div>`;
 }
 
@@ -784,16 +1123,24 @@ function callHtml(s) {
     const a = findAppt(s, c.apptId);
     const chat = `<div class="chat" id="chat">${c.transcript.map(m => `<div class="bubble ${m.who}">${esc(m.text)}</div>`).join("")}</div>`;
     let controls;
-    if (c.type === "ivr") {
+    if (c.engine === "elevenlabs") {
+      controls = `<div class="replies"><div class="typing">🎙️ ${esc(c.status ?? "")} Talk normally; the assistant hears you through the microphone.</div></div>`;
+    } else if (c.type === "ivr") {
       controls = `<div class="keypad">${["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"].map(k => `<button data-action="ivr" data-v="${k}">${k}</button>`).join("")}</div>`;
     } else {
       const L = SCRIPTS[c.lang];
-      const opts = c.step === "confirm_cancel" ? [["yes", L.yes], ["no", L.no]] : c.step === "note" ? [["none", L.noMore]] : L.replies;
-      controls = `<div class="replies">${opts.map(([k, t]) => `<button data-action="say" data-k="${k}" data-t="${esc(t)}">“${esc(t)}”</button>`).join("")}
-        <input id="say-text" placeholder="${esc(L.placeholder)}" /></div>`;
+      const opts = c.ai ? AI_SUGGESTIONS[c.lang].map(t => ["ai", t]) : c.step === "confirm_cancel" ? [["yes", L.yes], ["no", L.no]] : c.step === "note" ? [["none", L.noMore]] : c.step === "mode" ? L.modes : L.replies;
+      const mic = Recognition ? `<button class="mic ${c.listening ? "on" : ""}" data-action="mic" aria-label="Talk">${c.listening ? "● Listening…" : "🎤 Talk"}</button>` : "";
+      controls = `<div class="replies">${c.thinking ? `<div class="typing">Assistant is thinking…</div>` : ""}
+        <div class="reply-chips">${opts.map(([k, t]) => `<button data-action="say" data-k="${k}" data-t="${esc(t)}" ${c.thinking ? "disabled" : ""}>“${esc(t)}”</button>`).join("")}</div>
+        <div class="row">${mic}<input id="say-text" placeholder="${esc(L.placeholder)}" ${c.thinking ? "disabled" : ""} /></div></div>`;
     }
-    return `<div class="call"><div class="who"><div class="n">${c.type === "ivr" ? "Clinic arrival line (IVR)" : "Ninto assistant (Voice AI)"}</div><div class="s">${esc(s.clinic.name)} · ${esc(slotLabel(s, a))}</div></div>
-      ${chat}${controls}<button class="call round red hang" data-action="hangup">End</button></div>`;
+    const v = c.verdict;
+    const verdict = c.ai && v ? `<div class="verdict">Telling the clinic: <b>${esc({ yes: "Coming", no: "Not coming", unsure: "Not sure", unknown: "Asking…" }[v.coming])}</b>${v.eta_min >= 0 ? ` · ~${v.eta_min} min` : ""}${v.travel_mode !== "unknown" ? ` · ${esc(TRAVEL_MODES[v.travel_mode] ?? "")}` : ""}</div>` : "";
+    return `<div class="call"><div class="who"><div class="n">${c.type === "ivr" ? "Clinic arrival line (IVR)" : "Ninto assistant (Voice AI)"}</div><div class="s">${esc(s.clinic.name)} · ${esc(slotLabel(s, a))}${c.type === "voice" ? ` · ${{ elevenlabs: "ElevenLabs voice + Claude", claude: "live AI (Claude)", script: "scripted" }[c.engine] ?? ""}` : ""}</div>
+        ${c.type === "voice" && c.engine !== "elevenlabs" ? `<button class="voice-toggle" data-action="voice">${ui.voice ? "🔊 Voice on" : "🔇 Voice off"}</button>` : ""}</div>
+      ${c.error ? `<div class="call-err">${esc(c.error)}</div>` : ""}${verdict}
+      ${chat}${controls}<button class="round red hang" data-action="hangup">End</button></div>`;
   }
   const ringing = ringingCall(s);
   if (!ringing) return "";
@@ -802,7 +1149,7 @@ function callHtml(s) {
     <div class="ring-actions"><button class="round red" data-action="decline">Decline</button><button class="round green" data-action="answer">Answer</button></div></div>`;
 }
 
-const SCREENS = { home: screenHome, doctor: screenDoctor, slots: screenSlots, review: screenReview, failed: screenFailed, checking: screenChecking, confirmed: screenConfirmed, receipt: screenReceipt, appt: screenAppt, leaving: screenLeaving, inbox: screenInbox };
+const SCREENS = { home: screenHome, doctor: screenDoctor, slots: screenSlots, review: screenReview, failed: screenFailed, checking: screenChecking, confirmed: screenConfirmed, receipt: screenReceipt, appt: screenAppt, trip: screenTrip, inbox: screenInbox };
 
 function render() {
   const s = getState();
@@ -822,8 +1169,10 @@ function renderDev(s) {
   devInner.innerHTML = `
     <label>Signed in as <select data-dev="me">${s.patients.map(p => `<option value="${p.id}" ${p.id === s.me ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select></label>
     <p>Gateway: <b>${esc(ui.gateway?.label ?? "…")}</b>${ui.gateway?.reason ? ` (${esc(ui.gateway.reason)})` : ""}</p>
+    <p>Arrival calls: <b>${{ script: "Scripted", claude: ui.ai?.live ? `Claude (${esc(ui.ai.model)}) + browser speech` : "Claude selected, no key → scripted", elevenlabs: s.settings.elevenDelivery === "phone" ? "ElevenLabs real phone call (rings a real phone, not this app)" : ui.eleven?.live && ui.eleven?.agent ? "ElevenLabs voice + Claude, in this app" : `ElevenLabs selected, not set up (${esc(ui.eleven?.reason ?? "")})` }[s.settings.callEngine === "auto" ? "claude" : s.settings.callEngine] ?? ""}</b></p>
     <label><input type="checkbox" data-dev="drop" ${ui.dropCallback ? "checked" : ""} /> After a successful payment, lose Razorpay's success callback (tests the re-check)</label>
-    <label>Demo distance from clinic when sharing starts: <input type="number" min="0.5" max="40" step="0.5" value="${ui.startKm}" data-dev="km" style="width:60px" /> km</label>
+    <label>Demo starting point (when location is off or far away): <select data-dev="origin">${Object.entries(DEMO_ORIGINS).map(([k, o]) => `<option value="${k}" ${k === ui.trip.demo ? "selected" : ""}>${esc(o.label)} (${distanceKm(o, CLINIC_LL).toFixed(1)} km)</option>`).join("")}</select></label>
+    <p>Routes: <b>${ui.routes?.live ? "Google Maps Routes API" : "Built-in estimates"}</b>${!ui.routes?.live && ui.routes?.reason ? ` (${esc(ui.routes.reason)})` : ""}</p>
     ${mine.map(a => `<div>
       <label><input type="checkbox" data-dev="moving" data-id="${a.id}" ${a.location.moving ? "checked" : ""} /> Moving (off = stuck, or never left home)</label>
       <label><input type="checkbox" data-dev="sending" data-id="${a.id}" ${a.location.sending ? "checked" : ""} /> Phone sending updates (off = no update, goes stale after 15 min)</label>
@@ -834,6 +1183,16 @@ function renderDev(s) {
 // ---------- events ----------
 
 frame.addEventListener("click", event => {
+  // Cost breakup: open / close it without picking that option. Tracked in ui
+  // so it stays open across re-renders.
+  const summary = event.target.closest("details.breakup > summary");
+  if (summary) {
+    event.preventDefault();
+    const key = summary.parentElement.dataset.key;
+    ui.trip.open = ui.trip.open === key ? null : key;
+    return render();
+  }
+  if (event.target.closest("select")) return;
   const el = event.target.closest("[data-action]");
   if (!el) return;
   if (el.dataset.action === "close-sheet" && event.target.closest("[data-stop]") && el !== event.target.closest("[data-stop] [data-action]")) return;
@@ -908,14 +1267,19 @@ frame.addEventListener("click", event => {
       ui.sheet = null;
       toast("Clinic notified", `You'll be about ${el.dataset.v} minutes late.`);
       return render();
-    case "mode":
-      ui.mode = el.dataset.v;
+    case "trip-pick":
+      ui.trip.pick = el.dataset.v;
       return render();
-    case "share":
-      return shareLocation(ui.apptId, ui.mode ?? "car");
-    case "share-demo":
-      update(st => startSharing(st, findAppt(st, ui.apptId), ui.mode ?? "car", ui.startKm));
-      return go("appt", { locationDenied: false });
+    case "trip-have":
+      ui.trip.have[el.dataset.v] = !ui.trip.have[el.dataset.v];
+      if (!ui.trip.have[el.dataset.v] && ui.trip.pick === el.dataset.v) ui.trip.pick = null;
+      return render();
+    case "trip-share":
+      event.preventDefault();
+      ui.trip.share = !ui.trip.share;
+      return render();
+    case "trip-start":
+      return beginTrip(ui.apptId);
     case "stop-sharing":
       update(st => {
         findAppt(st, ui.apptId).location.sharing = false;
@@ -936,7 +1300,7 @@ frame.addEventListener("click", event => {
     case "notif-cancel":
       return go("appt", { apptId: id, sheet: "cancel" });
     case "notif-leaving":
-      return go("leaving", { apptId: id });
+      return go("trip", { apptId: id });
     case "notif-checkin":
       return go("appt", { apptId: id, sheet: "scan" });
     case "answer":
@@ -947,9 +1311,16 @@ frame.addEventListener("click", event => {
       return render();
     }
     case "hangup":
-      return endCall(ui.call.result ?? { outcome: "no_answer" });
+      if (ui.call.engine === "elevenlabs") return elevenFinish(ui.call);
+      return endCall(ui.call.ai ? verdictResult(ui.call.verdict) : ui.call.result ?? { outcome: "no_answer" });
     case "say":
-      return voiceReply(el.dataset.k, el.dataset.t);
+      return el.dataset.k === "ai" ? aiReply(el.dataset.t) : voiceReply(el.dataset.k, el.dataset.t);
+    case "mic":
+      return ui.call.listening ? (stopListening(), (ui.call.listening = false), render()) : listen();
+    case "voice":
+      ui.voice = !ui.voice;
+      if (!ui.voice) window.speechSynthesis?.cancel();
+      return render();
     case "ivr":
       return ivrPress(el.dataset.v);
   }
@@ -959,8 +1330,13 @@ frame.addEventListener("keydown", event => {
   if (event.target.id === "say-text" && event.key === "Enter" && event.target.value.trim()) {
     const text = event.target.value.trim();
     event.target.blur();
+    if (ui.call.ai) return aiReply(text);
     voiceReply(ui.call.step === "note" ? "note" : ui.call.step === "confirm_cancel" ? (/yes|ஆம்/i.test(text) ? "yes" : "no") : "text", text);
   }
+});
+
+frame.addEventListener("change", event => {
+  if (event.target.dataset.actionChange === "trip-origin") useDemoOrigin(event.target.value);
 });
 
 frame.addEventListener("input", event => {
@@ -989,7 +1365,7 @@ devInner.addEventListener("change", event => {
     return go("home");
   }
   if (kind === "drop") ui.dropCallback = t.checked;
-  if (kind === "km") ui.startKm = Number(t.value) || 5;
+  if (kind === "origin") useDemoOrigin(t.value);
   if (kind === "moving" || kind === "sending") {
     update(s => {
       findAppt(s, t.dataset.id).location[kind] = t.checked;
@@ -1019,6 +1395,19 @@ function recheckOrphans() {
 for (const n of getState().notifications) seen.add(n.id);
 subscribe(() => {
   pushNew();
+  render();
+});
+fetch("/api/routes/config").then(r => r.json()).catch(() => ({ live: false, reason: "Routes server not reachable" })).then(cfg => {
+  ui.routes = cfg;
+  fetchRoutes();
+  render();
+});
+fetch("/api/elevenlabs/config").then(r => r.json()).catch(() => ({ live: false, reason: "ElevenLabs server not reachable" })).then(cfg => {
+  ui.eleven = cfg;
+  render();
+});
+fetch("/api/ai-call/config").then(r => r.json()).catch(() => ({ live: false, reason: "AI call server not reachable" })).then(cfg => {
+  ui.ai = cfg;
   render();
 });
 gatewayInfo().then(g => {

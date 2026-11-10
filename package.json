@@ -1,0 +1,8 @@
+{
+  "name": "byepo-pocs",
+  "private": true,
+  "description": "Dependencies for the Netlify functions in netlify/functions (bundled by Netlify from the repo root).",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.6.0"
+  }
+}

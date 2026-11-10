@@ -33,11 +33,11 @@
       <p>Both apps share one demo day in this browser and move on the demo clock above. Payments run on
         Razorpay test mode when keys are set on the server, otherwise on a simulated gateway. See
         <code>audit/appointment-flow-plan.md</code>.</p>
-      <div class="links"><a class="btn outline sm" href="clinic/">Clinic app only</a><a class="btn outline sm" href="patient/">Patient app only</a><a class="btn ghost sm" href="../">All POCs</a></div>
+      <div class="links"><a class="btn primary sm" href="costing.html">Costing</a><a class="btn outline sm" href="clinic/">Clinic app only</a><a class="btn outline sm" href="patient/">Patient app only</a><a class="btn ghost sm" href="../">All POCs</a></div>
     </div>
     <div class="split">
       <div class="pane"><div class="label">CLINIC APP (RECEPTION)</div><iframe src="clinic/" title="Clinic app"></iframe></div>
-      <div class="pane"><div class="label">PATIENT APP</div><iframe src="patient/" title="Patient app" allow="geolocation"></iframe></div>
+      <div class="pane"><div class="label">PATIENT APP</div><iframe src="patient/" title="Patient app" allow="geolocation; microphone"></iframe></div>
     </div>
     <div class="try">
       <h2>THINGS TO TRY</h2>
@@ -45,8 +45,10 @@
         <li><b>Book and pay (patient):</b> pick a doctor, a slot, Pay now. Try a decline, closing Checkout, and (demo controls) losing the success callback to see the re-check confirm or refund.</li>
         <li><b>Book and pay (clinic):</b> Schedule → Calendar → tap a free slot → walk-in or scheduled → Cash, UPI, Card, payment link or pay at visit. A link shows up in the patient app to pay.</li>
         <li><b>Late patient:</b> load the “Late patient example” scenario, press +5 → at 10:30 Arjun is Reserved with a 10-minute grace. Call next in the clinic, then check in from the patient app within or after grace.</li>
-        <li><b>On the way:</b> on the appointment day, tap I'm leaving now, share location, and watch the distance on the clinic row as the clock runs.</li>
-        <li><b>Arrival call:</b> 15 minutes before a slot, un-arrived patients are called. The signed-in patient answers on the phone (Voice AI or IVR, English or Tamil in Settings); the result lands on the clinic row.</li>
+        <li><b>Getting there:</b> open today's appointment → Plan my trip. Every way to get there (walk, two-wheeler, auto, cab, car, bus/metro) shows time, arrival and leave-by time, and an itemised cost breakup, with a best pick and a Google Maps route. Times come from the Google Maps Routes API when <code>GOOGLE_MAPS_API_KEY</code> is set on the server, otherwise estimates. With location off, pick a demo start (e.g. Adyar). Tap I'm leaving now and watch the clinic's Up next panel.</li>
+        <li><b>Dynamic queue:</b> load “Late patient example”. Arjun said on the call he's 20 min away by auto, so Up next already places him by that arrival. Run the clock past his grace: he isn't sent to the end. He goes in as if booked for (arrival − grace), ahead of later slots.</li>
+        <li><b>Voice engine switch:</b> Clinic → Settings → Arrival calls → Voice AI engine: Scripted, Claude + browser speech, or ElevenLabs + Claude (in the patient app, or a real phone call through a SIP trunk / Twilio). See <a href="costing.html">Costing</a> for what each costs at your volume.</li>
+        <li><b>AI arrival call:</b> 15 minutes before a slot, un-arrived patients without live location are called, with one follow-up if they're 10+ min past the time they gave. With <code>ANTHROPIC_API_KEY</code> on the server it's a live Claude conversation (spoken aloud; reply by mic, tap or typing). Otherwise it's scripted. The clinic row shows coming or not, ETA, travel mode, a summary and any note for the doctor.</li>
         <li><b>Refunds:</b> cancel as the patient (rule depends on hours left) or press Doctor cancels (full refund). Online payments are refunded through Razorpay.</li>
       </ol>
     </div>

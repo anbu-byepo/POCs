@@ -44,6 +44,13 @@
       .stats { display: flex; gap: 18px; font-size: 12px; color: var(--muted); }
       .stats b { display: block; font-size: 16px; color: var(--ink); }
 
+      .upnext { background: #fff; border: 1px solid var(--tint-border); border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+      .upnext table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+      .upnext td { padding: 6px 4px; border-top: 1px solid var(--divider); vertical-align: middle; }
+      .upnext td.pos { width: 22px; font-weight: 800; color: var(--accent-dark); }
+      .upnext td.at { text-align: right; font-weight: 700; white-space: nowrap; }
+      .upnext tr.away td { background: #FFFCF5; }
+      .upnext .muted, .muted { color: var(--faint); }
       .group-title { font-size: 11px; font-weight: 700; letter-spacing: .08em; color: var(--faint); text-transform: uppercase; margin: 6px 0 -6px; }
       .qrow { background: #fff; border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; display: grid; grid-template-columns: 64px 1fr; gap: 12px; }
       .qrow.serving-row { border: 2px solid var(--accent); padding: 11px 13px; }

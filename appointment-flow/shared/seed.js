@@ -23,6 +23,9 @@ function baseState(nowMs) {
       callBeforeMin: 15,
       callType: "voice", // voice | ivr
       callLanguage: "en", // en | ta
+      callEngine: "claude", // script | claude (Claude + browser speech, in the app) | elevenlabs (ElevenLabs voice + Claude)
+      elevenDelivery: "app", // app (talk in the patient app) | phone (real call through Twilio)
+      testPhone: "", // real calls go to this number instead of the demo patient's
       noShowCutoffMin: 30,
       holdMin: 10,
       fullRefundHours: 24,
@@ -162,7 +165,7 @@ export function seedLateExample() {
   // The 2-hour reminder already went out this morning. The arrival call has
   // too, so the demo's first event is the 10:30 grace rule, not a call.
   for (const a of s.appointments) a.reminders = { day: a.createdAt, twoHour: a.createdAt };
-  s.appointments[1].calls = [{ id: "call_seed", type: "voice", lang: "en", trigger: "auto", status: "done", startedAt: now - 10 * MIN, outcome: "eta", etaMin: 20, transcript: [] }];
+  s.appointments[1].calls = [{ id: "call_seed", type: "voice", lang: "en", trigger: "auto", status: "done", startedAt: now - 10 * MIN, endedAt: now - 9 * MIN, outcome: "eta", etaMin: 20, coming: "yes", mode: "auto", summary: "Coming by auto, about 20 minutes.", transcript: [] }];
   return s;
 }
 

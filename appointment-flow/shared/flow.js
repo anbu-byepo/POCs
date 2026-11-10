@@ -2,10 +2,14 @@
 // demo state: booking and slots, check-in and tokens, the queue line, grace
 // and late patients, the wait estimate (Feature 1), reminders (Feature 10),
 // location rules and arrival calls (Feature 2), and the refund rule
-// (Feature 11). runEngine() applies every time-based rule; the store calls it
+// (Feature 11). The queue is dynamic: everyone's expected arrival (live
+// location, trip plan, the arrival call, "I'll be late") feeds projection(),
+// which places late patients by when they'll actually get here instead of at
+// the end. runEngine() applies every time-based rule; the store calls it
 // after each write, so whichever app moves the clock moves the day forward.
 
 import { MIN, HOUR, at, minOfDay, round5, t12, tms, uid, ymd, rupees } from "./util.js";
+import { MODE_LABELS, travelMin } from "./trip.js";
 
 const ACTIVE = ["booked", "reserved", "late", "checked_in", "in_consult"];
 const NOT_ARRIVED = ["booked", "reserved", "late"];
@@ -13,8 +17,7 @@ const BUFFER_MIN = 5;
 const RING_MIN = 2;
 const STALE_LOCATION_MIN = 15;
 const NEAR_KM = 0.3;
-export const SPEED_KMH = { walk: 5, two_wheeler: 22, car: 18, bus: 14 };
-export const TRAVEL_MODES = { walk: "Walk", two_wheeler: "Two-wheeler", car: "Car or cab", bus: "Bus or train" };
+export const TRAVEL_MODES = MODE_LABELS;
 
 export const isActive = a => ACTIVE.includes(a.status);
 export const notArrived = a => NOT_ARRIVED.includes(a.status);
@@ -232,18 +235,11 @@ export function checkIn(s, a, by) {
   a.checkedInAt = s.clock.nowMs;
   a.checkedInBy = by;
   if (a.location) a.location.sharing = false;
-  if (was === "reserved") {
-    // Arrived within grace: seen right after whoever is with the doctor now.
-    // Several in grace at once keep their original slot order.
-    a.seq = -100000 + a.slot;
-    a.flags.arrivedInGrace = true;
-  } else if (was === "late" || was === "no_show") {
-    const { waiting } = line(s, a.doctorId, a.date);
-    a.seq = (waiting.at(-1)?.seq ?? a.slot) + 1;
-    a.flags.lateArrival = true;
-  } else {
-    a.seq = a.slot;
-  }
+  // Place in line by arrival, not "late = last": within grace they keep their
+  // slot; later than that they go in as if booked for (arrival - grace).
+  a.seq = queueKey(s, a, s.clock.nowMs);
+  if (was === "reserved") a.flags.arrivedInGrace = true;
+  if (a.seq !== a.slot) a.flags.lateArrival = true;
   a.status = "checked_in";
   a.estStartMs = null; // new baseline; checking in isn't a "wait changed" push
   const doctor = doctorOf(s, a);
@@ -309,28 +305,101 @@ export function callNext(s, doctorId, date) {
 
 // ---------- wait estimate (Feature 1) ----------
 
-export function estimate(s, a) {
-  const doctor = doctorOf(s, a);
-  const avg = avgConsult(doctor);
+// ---------- dynamic queue: expected arrivals and the projected order ----------
+
+// Where a not-yet-arrived patient's expected arrival comes from, best first:
+// live location; else the newest of the trip they started, the arrival call
+// and "I'll be late"; else their slot (assumed on time) while it's still
+// ahead; else the end of their grace while reserved; else unknown (null).
+export function arrivalOf(s, a) {
+  if (!notArrived(a)) return null;
   const now = s.clock.nowMs;
-  if (a.status === "in_consult") return { turn: true };
-  const { serving, waiting } = line(s, a.doctorId, a.date);
-  let present;
-  if (a.status === "checked_in") {
-    present = waiting.slice(0, waiting.findIndex(w => w.id === a.id));
-  } else {
-    // Not here yet: present patients who'd go before their slot, plus
-    // patients booked earlier who can still turn up.
-    present = waiting.filter(w => w.seq < a.slot);
-    present = present.concat(s.appointments.filter(x => x.doctorId === a.doctorId && x.date === a.date && x.id !== a.id && x.status === "booked" && x.slot < a.slot));
+  const loc = a.location;
+  if (loc?.sharing && locationFresh(s, a)) {
+    const mins = etaMin(loc, now);
+    return { etaMs: now + mins * MIN, source: "location", label: `${loc.distanceKm.toFixed(1)} km away, ~${mins} min by ${MODE_LABELS[loc.mode]?.toLowerCase() ?? "road"}`, firm: true };
   }
-  const ahead = present.length + (serving ? 1 : 0);
-  const remainingCurrent = serving ? Math.max(1, avg - (now - serving.startedAt) / MIN) : 0;
-  let wait = remainingCurrent + present.length * avg + BUFFER_MIN;
-  if (a.status !== "checked_in") wait = Math.max(wait, (apptMs(a) - now) / MIN);
+  const told = [];
+  if (a.trip) told.push({ at: a.trip.startedAt, etaMs: a.trip.etaMs, source: "trip", label: `Left at ${tms(a.trip.startedAt)} by ${MODE_LABELS[a.trip.mode]?.toLowerCase()}` });
+  const call = a.calls.filter(c => c.status === "done").at(-1);
+  const callAt = call ? (call.endedAt ?? call.startedAt) : 0;
+  if (call?.outcome === "eta" && call.etaMin != null) told.push({ at: callAt, etaMs: callAt + call.etaMin * MIN, source: "call", label: `Said ~${call.etaMin} min on the call${call.mode ? ` (${MODE_LABELS[call.mode]?.toLowerCase()})` : ""}` });
+  if (call?.outcome === "at_clinic") told.push({ at: callAt, etaMs: callAt + 2 * MIN, source: "call", label: "Said they're at the clinic" });
+  if (a.lateNote) told.push({ at: a.lateNote.at, etaMs: apptMs(a) + a.lateNote.minutes * MIN, source: "patient", label: `Said ~${a.lateNote.minutes} min late` });
+  if (told.length) {
+    const t = told.reduce((x, y) => (y.at > x.at ? y : x));
+    // Promised time has passed and they're still not here: assume a few more minutes.
+    return { ...t, etaMs: Math.max(t.etaMs, now + 3 * MIN), overdue: t.etaMs < now, firm: true };
+  }
+  if (a.status === "booked" && apptMs(a) > now) return { etaMs: apptMs(a), source: "slot", label: "Assumed on time", firm: false };
+  if (a.status === "reserved") return { etaMs: a.graceUntil, source: "grace", label: `Slot held until ${tms(a.graceUntil)}`, firm: false };
+  return null;
+}
+
+// Queue priority in minutes of the day (lower goes first). Arriving by the end
+// of grace keeps the booked slot; arriving later counts as booked for
+// (arrival - grace) -- they lose only the time they were late, never sent to
+// the back.
+export function queueKey(s, a, arrivalMs) {
+  const grace = s.settings.graceMin * MIN;
+  if (arrivalMs <= apptMs(a) + grace) return a.slot;
+  return Math.max(a.slot, minOfDay(arrivalMs - grace));
+}
+
+// The doctor's day from now on: whoever is ready (checked in, or expected to
+// have arrived by then) with the lowest queue key goes next. Checked-in
+// patients are ready now; others from their expected arrival. Patients with
+// no idea of arrival go last, flagged unknown.
+export function projection(s, doctorId, date) {
+  const doctor = s.doctors.find(d => d.id === doctorId);
+  const avgMs = avgConsult(doctor) * MIN;
+  const now = s.clock.nowMs;
+  const { serving, waiting } = line(s, doctorId, date);
+  let t = Math.max(now, at(date, doctor.start));
+  if (serving) t = now + Math.max(MIN, avgMs - (now - serving.startedAt));
+  const pool = waiting.map(a => ({ a, here: true, readyMs: now, key: a.seq, arrival: null }));
+  const unknown = [];
+  for (const a of s.appointments) {
+    if (a.doctorId !== doctorId || a.date !== date || !notArrived(a)) continue;
+    const arrival = arrivalOf(s, a);
+    if (!arrival || !Number.isFinite(arrival.etaMs)) unknown.push({ a, here: false, readyMs: null, key: Infinity, arrival: null, unknown: true });
+    else pool.push({ a, here: false, readyMs: Math.max(now, arrival.etaMs), key: queueKey(s, a, Math.max(now, arrival.etaMs)), arrival });
+  }
+  const order = [];
+  while (pool.length) {
+    const ready = pool.filter(c => c.readyMs <= t);
+    if (!ready.length) {
+      t = Math.min(...pool.map(c => c.readyMs)); // doctor free until the next arrival
+      continue;
+    }
+    const c = ready.reduce((x, y) => (y.key < x.key || (y.key === x.key && y.readyMs < x.readyMs) ? y : x));
+    order.push({ ...c, startMs: t });
+    pool.splice(pool.indexOf(c), 1);
+    t += avgMs;
+  }
+  for (const c of unknown.sort((x, y) => x.a.slot - y.a.slot)) {
+    order.push({ ...c, startMs: t });
+    t += avgMs;
+  }
+  return { serving, order, avg: avgMs / MIN };
+}
+
+export function estimate(s, a) {
+  if (a.status === "in_consult") return { turn: true };
+  const now = s.clock.nowMs;
+  const p = projection(s, a.doctorId, a.date);
+  const i = p.order.findIndex(c => c.a.id === a.id);
+  const mine = p.order[i];
+  const before = i < 0 ? [] : p.order.slice(0, i);
+  const projectedMs = mine ? mine.startMs : Math.max(now, apptMs(a));
+  const ahead = before.length + (p.serving ? 1 : 0);
+  const wait = (projectedMs - now) / MIN + (a.status === "checked_in" ? BUFFER_MIN : 0);
   const lo = round5(wait - 5);
   const hi = lo + 10;
-  return { ahead, avg: Math.round(avg), lo, hi, startMs: now + ((lo + hi) / 2) * MIN };
+  return {
+    ahead, onWay: before.filter(c => !c.here).length, position: i + 1, avg: Math.round(p.avg), lo, hi,
+    projectedMs, startMs: now + ((lo + hi) / 2) * MIN, unknown: !!mine?.unknown
+  };
 }
 
 export function estimateText(est, arrived) {
@@ -338,7 +407,7 @@ export function estimateText(est, arrived) {
   if (arrived && est.ahead === 1) return { head: "You're next after this patient.", sub: "Please be ready." };
   if (arrived && est.ahead === 0) return { head: "You're next.", sub: "Please be ready." };
   return {
-    head: `${est.ahead} patient${est.ahead === 1 ? "" : "s"} ahead`,
+    head: `${est.ahead} patient${est.ahead === 1 ? "" : "s"} ahead${est.onWay ? ` (${est.onWay} on the way)` : ""}`,
     sub: est.lo ? `Estimated wait: ${est.lo} to ${est.hi} min` : `Estimated wait: under ${est.hi} min`
   };
 }
@@ -352,18 +421,59 @@ export function checkInTime(s, a) {
 
 // ---------- arrival calls ----------
 
+// Which voice engine handles Voice AI calls: scripted, Claude (in the patient
+// app, browser speech), or ElevenLabs + Claude (in the app, or a real phone call).
+export function callEngine(s) {
+  const e = s.settings.callEngine;
+  return e === "auto" ? "claude" : e ?? "claude";
+}
+
 export function startCall(s, a, trigger) {
-  const call = { id: uid("call"), type: s.settings.callType, lang: s.settings.callLanguage, trigger, status: "ringing", startedAt: s.clock.nowMs, outcome: null, etaMin: null, transcript: [] };
+  const engine = s.settings.callType === "ivr" ? "ivr" : callEngine(s);
+  const provider = engine === "elevenlabs" && s.settings.elevenDelivery === "phone" ? "elevenlabs_phone" : engine;
+  const call = { id: uid("call"), type: s.settings.callType, lang: s.settings.callLanguage, trigger, provider, status: "ringing", startedAt: s.clock.nowMs, outcome: null, etaMin: null, coming: null, mode: null, summary: "", engine: null, transcript: [] };
   a.calls.push(call);
-  log(s, `${call.type === "ivr" ? "IVR" : "Voice AI"} call to ${patientOf(s, a).name} (${trigger})`);
+  log(s, `${call.type === "ivr" ? "IVR" : provider === "elevenlabs_phone" ? "ElevenLabs phone" : "Voice AI"} call to ${patientOf(s, a).name} (${trigger})`);
   return call;
 }
 
+// What the call knows: appointment and queue facts, as ElevenLabs dynamic
+// variables (also the Claude-only call's context).
+export function callFacts(s, a, lang = s.settings.callLanguage) {
+  const est = estimate(s, a);
+  const arr = arrivalOf(s, a);
+  const first = patientOf(s, a).name.split(" ")[0];
+  const doctor = doctorOf(s, a).name;
+  const g = s.settings.graceMin;
+  return {
+    opening_line: lang === "ta"
+      ? `வணக்கம் ${first}, ${s.clinic.name} சார்பாக அழைக்கிறேன். ${doctor} உடனான இன்றைய ${slotLabel(s, a)} சந்திப்புக்கு வந்துகொண்டிருக்கிறீர்களா?`
+      : `Hello ${first}, this is the assistant from ${s.clinic.name} about your ${slotLabel(s, a)} appointment with ${doctor} today. Are you on your way?`,
+    call_language: lang === "ta" ? "Tamil" : "English",
+    lang,
+    clinic: s.clinic.name,
+    address: `${s.clinic.address} (${s.clinic.note})`,
+    patient_name: first,
+    patient: first,
+    doctor,
+    slot: slotLabel(s, a),
+    now: tms(s.clock.nowMs),
+    grace_min: g,
+    graceMin: g,
+    queue: `${est.ahead} patient(s) ahead of them in the projected order, doctor averaging ${est.avg} min per patient. If they arrive within ${g} min of the slot they keep their place; later than that they're fitted in by arrival time (as if booked for arrival minus ${g} min), never sent to the end. ${a.status === "reserved" ? `Their slot is held until ${tms(a.graceUntil)}.` : a.status === "late" ? "Their grace period has already passed." : ""}`.trim(),
+    refund: refundQuote(s, a, "patient").text,
+    known: [arr?.firm ? `${arr.label}, expected around ${tms(arr.etaMs)}` : "", a.lateNote ? `Told the app they'd be ~${a.lateNote.minutes} min late` : ""].filter(Boolean).join(". ") || "Nothing yet"
+  };
+}
+
 // note: anything extra the patient told the Voice AI for the doctor.
-export function finishCall(s, a, { outcome, etaMin = null, transcript = [], note = "" }) {
+// coming: yes | no | unsure; mode: how they're travelling; summary: one line
+// for reception (the AI writes it on live calls).
+export function finishCall(s, a, { outcome, etaMin = null, transcript = [], note = "", coming = null, mode = null, summary = "", engine = null, costUsd = null, durationSecs = null }) {
   const call = a.calls.at(-1);
   if (!call || call.status === "done") return;
-  Object.assign(call, { status: "done", outcome, etaMin, transcript, note, endedAt: s.clock.nowMs });
+  coming ??= { eta: "yes", at_clinic: "yes", cancelled: "no", no_answer: null }[outcome] ?? "unsure";
+  Object.assign(call, { status: "done", outcome, etaMin, transcript, note, coming, mode, summary, engine: engine ?? call.engine, costUsd, durationSecs, endedAt: s.clock.nowMs });
   if (outcome === "cancelled") cancelAppointment(s, a, "patient");
   log(s, `Call result for ${patientOf(s, a).name}: ${callResultText(call)}`);
 }
@@ -372,10 +482,12 @@ export function callResultText(call) {
   if (!call) return "";
   if (call.status === "ringing") return "Calling now…";
   if (call.status === "in_progress") return "On the call now…";
+  const how = call.mode && MODE_LABELS[call.mode] ? ` by ${MODE_LABELS[call.mode].toLowerCase()}` : "";
   return {
-    eta: `Said about ${call.etaMin} min`,
-    at_clinic: "At the clinic, not checked in",
-    cancelled: "Cancelled on the call",
+    eta: `Coming: about ${call.etaMin} min${how}`,
+    at_clinic: "Coming: at the clinic, not checked in",
+    cancelled: "Not coming: cancelled on the call",
+    unsure: "Not sure they can make it",
     no_answer: "No answer"
   }[call.outcome] ?? call.outcome;
 }
@@ -387,8 +499,17 @@ export function locationFresh(s, a) {
   return !!loc?.sharing && s.clock.nowMs - loc.updatedAt < STALE_LOCATION_MIN * MIN;
 }
 
-export function etaMin(loc) {
-  return Math.ceil((loc.distanceKm / SPEED_KMH[loc.mode ?? "car"]) * 60);
+// paceFactor: set when the trip's time came from Google Maps, so the remaining
+// estimate keeps Google's pace for that route.
+export function etaMin(loc, atMs = Date.now()) {
+  return Math.max(1, Math.round(travelMin(loc.mode ?? "car", loc.distanceKm, atMs) * (loc.paceFactor ?? 1)));
+}
+
+// The patient picked a way to travel and set off (trip planner). etaMs is
+// what the planner showed; live location, if shared, takes over from it.
+export function startTrip(s, a, { mode, etaMs, distanceKm, cost, source = "estimate" }) {
+  a.trip = { mode, etaMs, distanceKm, cost, source, startedAt: s.clock.nowMs };
+  log(s, `${patientOf(s, a).name} set off by ${MODE_LABELS[mode]}, expected ${tms(etaMs)}`);
 }
 
 export function startSharing(s, a, mode, distanceKm) {
@@ -399,7 +520,8 @@ export function startSharing(s, a, mode, distanceKm) {
 // ---------- the time-based rules ----------
 
 const LATE_MSG = minutes => `We're seeing another patient while we wait for you. Your slot is held. Please arrive within ${minutes} minutes.`;
-const GRACE_OVER_MSG = "Your reserved slot has passed. Please check in at reception and you'll be seen as soon as possible.";
+const GRACE_OVER_MSG = "Your reserved slot has passed. Check in when you arrive: you'll be fitted in by when you get here, not sent to the end of the line.";
+const LATE_MSG_DYNAMIC = (etaMs, est) => `We'll fit you in by when you arrive (about ${tms(etaMs)}), not at the end of the line. Expected to go in around ${tms(est.projectedMs)}${est.ahead ? `, after ${est.ahead} patient${est.ahead === 1 ? "" : "s"}` : ""}.`;
 
 export function runEngine(s) {
   const now = s.clock.nowMs;
@@ -436,7 +558,11 @@ export function runEngine(s) {
     // Simulated movement for patients sharing location.
     const loc = a.location;
     if (loc?.sharing && loc.sending) {
-      if (loc.moving && dt) loc.distanceKm = Math.max(0, loc.distanceKm - (SPEED_KMH[loc.mode] * dt) / HOUR);
+      if (loc.moving && dt) {
+        // Cover the remaining distance at the pace the route model expects now.
+        const speed = loc.distanceKm / Math.max(1, etaMin(loc, now)) * 60;
+        loc.distanceKm = Math.max(0, loc.distanceKm - (speed * dt) / HOUR);
+      }
       loc.updatedAt = now;
       if (loc.distanceKm <= NEAR_KM && !a.flags.nearPrompted) {
         a.flags.nearPrompted = true;
@@ -444,11 +570,14 @@ export function runEngine(s) {
       }
     }
 
-    // Location on, running late before their turn: tell them, and tell the
-    // next patient they may be seen early.
-    if (a.status === "booked" && locationFresh(s, a) && !a.flags.lateWarned && now + etaMin(loc) * MIN > slotMs) {
+    // Expected after their grace (location, trip, call or "I'll be late"):
+    // tell them where they'll slot in, and tell the next patient they may be
+    // seen early.
+    const arr = notArrived(a) ? arrivalOf(s, a) : null;
+    if (notArrived(a) && arr?.firm && !a.flags.lateWarned && arr.etaMs > slotMs + st.graceMin * MIN) {
       a.flags.lateWarned = true;
-      notify(s, a, { kind: "late", title: "Running a little late?", body: LATE_MSG(st.graceMin) });
+      const est = estimate(s, a);
+      notify(s, a, { kind: "late", title: "Running late? Your place moves with you", body: LATE_MSG_DYNAMIC(arr.etaMs, est) });
       const next = s.appointments
         .filter(x => x.doctorId === a.doctorId && x.date === a.date && x.slot > a.slot && isActive(x) && x.status !== "in_consult")
         .sort((x, y) => x.slot - y.slot)[0];
@@ -474,10 +603,15 @@ export function runEngine(s) {
       continue;
     }
 
-    // Arrival call for anyone not here by the trigger time.
-    if (notArrived(a) && !a.calls.length && now >= slotMs - st.callBeforeMin * MIN) startCall(s, a, "auto");
+    // Arrival call for anyone not here by the trigger time -- unless live
+    // location already tells us. One follow-up if they promised a time and
+    // are 10+ min past it.
+    if (notArrived(a) && !a.calls.length && !locationFresh(s, a) && now >= slotMs - st.callBeforeMin * MIN) startCall(s, a, "auto");
+    const last = a.calls.at(-1);
+    if (notArrived(a) && a.calls.length === 1 && last.status === "done" && last.outcome === "eta" && !locationFresh(s, a) && now >= (last.endedAt ?? last.startedAt) + (last.etaMin + 10) * MIN) startCall(s, a, "follow-up");
     const call = a.calls.at(-1);
-    if (call?.status === "ringing" && now - call.startedAt >= RING_MIN * MIN) finishCall(s, a, { outcome: "no_answer" });
+    // Real phone calls are settled by ElevenLabs' result, not the demo clock.
+    if (call?.status === "ringing" && call.provider !== "elevenlabs_phone" && now - call.startedAt >= RING_MIN * MIN) finishCall(s, a, { outcome: "no_answer" });
 
     // Push only when the expected time shifts by 15+ minutes.
     if (a.status === "booked" || a.status === "checked_in") {

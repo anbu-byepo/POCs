@@ -1,0 +1,375 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>Appointment Flow Costing</title>
+    <link rel="stylesheet" href="shared/base.css" />
+    <style>
+      body { background: var(--page); }
+      .wrap { max-width: 1080px; margin: 0 auto; padding: 24px 16px 64px; display: flex; flex-direction: column; gap: 22px; }
+      header h1 { font-size: 24px; margin: 0 0 6px; }
+      header p { margin: 0; color: var(--text-2); font-size: 14px; line-height: 1.55; max-width: 760px; }
+      header .links { margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; }
+      h2 { font-size: 17px; margin: 0 0 4px; }
+      h3 { font-size: 14px; margin: 0; }
+      .panel { background: #fff; border: 1px solid var(--border); border-radius: 14px; padding: 18px; display: flex; flex-direction: column; gap: 12px; }
+      .panel > p, .lede { margin: 0; font-size: 13.5px; color: var(--text-2); line-height: 1.55; }
+      .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px 16px; }
+      .field input, .field select { font-size: 14px; }
+      .totals { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; }
+      .total { border: 1px solid var(--tint-border); background: var(--tint); border-radius: 12px; padding: 12px 14px; }
+      .total .k { font-size: 12px; color: var(--muted); font-weight: 600; }
+      .total .v { font-size: 22px; font-weight: 800; color: var(--ink); margin-top: 2px; font-variant-numeric: tabular-nums; }
+      .total .s { font-size: 12px; color: var(--muted); margin-top: 2px; }
+      .scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+      table.t { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 640px; }
+      table.t th { text-align: left; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--faint); padding: 8px 8px; border-bottom: 1px solid var(--border); font-weight: 700; }
+      table.t td { padding: 9px 8px; border-bottom: 1px solid var(--divider); vertical-align: top; line-height: 1.45; }
+      table.t td.n, table.t th.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+      table.t tr.sum td { font-weight: 800; border-bottom: none; border-top: 2px solid var(--border); }
+      table.t tr.on td { background: var(--tint); }
+      table.t .s { font-size: 12px; color: var(--muted); }
+      .free { color: var(--accent-dark); font-weight: 700; }
+      .svc { border-top: 1px solid var(--divider); padding-top: 14px; display: grid; grid-template-columns: 220px 1fr; gap: 10px 20px; }
+      .svc:first-of-type { border-top: none; padding-top: 0; }
+      .svc .tag { font-size: 11px; font-weight: 700; color: var(--faint); text-transform: uppercase; letter-spacing: .06em; margin-top: 4px; }
+      .svc ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; line-height: 1.6; color: var(--text-2); }
+      .svc .src { font-size: 12px; color: var(--faint); margin-top: 6px; }
+      .svc .src a { color: var(--faint); }
+      .note, .warn { font-size: 13px; }
+      @media (max-width: 720px) {
+        .svc { grid-template-columns: 1fr; }
+        header h1 { font-size: 20px; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <h1>What the appointment flow costs to run</h1>
+        <p>Every paid service behind the patient and clinic apps: what's free, what you pay after that, and the total for your volume. Change the numbers below and everything updates. Prices are as published on <b>8 Nov 2026</b> (sources at the bottom) and change often, so check them before you sign anything.</p>
+        <div class="links"><a class="btn outline sm" href="./">Back to the demo</a><a class="btn ghost sm" href="#services">Service by service</a><a class="btn ghost sm" href="#engines">IVR vs AI calls</a><a class="btn ghost sm" href="#sources">Sources</a></div>
+      </header>
+
+      <section class="panel" aria-labelledby="h-inputs">
+        <h2 id="h-inputs">Your volume</h2>
+        <div class="grid" id="inputs"></div>
+      </section>
+
+      <section class="panel" aria-labelledby="h-total">
+        <h2 id="h-total">Monthly cost</h2>
+        <div class="totals" id="totals"></div>
+        <div class="scroll"><table class="t" id="breakdown"></table></div>
+        <div class="note" id="freeline"></div>
+      </section>
+
+      <section class="panel" id="engines" aria-labelledby="h-engines">
+        <h2 id="h-engines">Arrival calls: IVR vs Claude vs ElevenLabs</h2>
+        <p>The same calls at your volume, on each engine. "Per call" is one call of the average length you set (the IVR uses its own, shorter length). Claude is the brain in every AI option. ElevenLabs adds the voice, the hearing and the phone line. The IVR has no AI: a keypad menu over the phone line.</p>
+        <div class="scroll"><table class="t" id="enginecmp"></table></div>
+        <div class="scroll"><table class="t" id="percall"></table></div>
+      </section>
+
+      <section class="panel" id="services" aria-labelledby="h-services">
+        <h2 id="h-services">Service by service</h2>
+        <div id="svc"></div>
+      </section>
+
+      <section class="panel" id="sources" aria-labelledby="h-sources">
+        <h2 id="h-sources">Sources and assumptions</h2>
+        <ul class="lede" style="padding-left:18px;margin:0;line-height:1.8">
+          <li>Google Maps, India pricing: <a href="https://developers.google.com/maps/billing-and-pricing/pricing-india" target="_blank" rel="noopener">pricing-india</a>, SKU triggers: <a href="https://developers.google.com/maps/billing-and-pricing/sku-details/routes" target="_blank" rel="noopener">sku-details/routes</a></li>
+          <li>ElevenLabs Agents: <a href="https://elevenlabs.io/pricing/agents" target="_blank" rel="noopener">pricing/agents</a>, LLM billing: <a href="https://elevenlabs.io/docs/eleven-agents/customization/llm" target="_blank" rel="noopener">docs/llm</a>, Tamil: <a href="https://elevenlabs.io/docs/capabilities/text-to-speech" target="_blank" rel="noopener">text-to-speech</a> and <a href="https://elevenlabs.io/docs/capabilities/speech-to-text" target="_blank" rel="noopener">speech-to-text</a></li>
+          <li>Claude API: <a href="https://platform.claude.com/docs/en/about-claude/pricing" target="_blank" rel="noopener">platform.claude.com pricing</a></li>
+          <li>Phone lines: <a href="https://www.plivo.com/voice/pricing/in/" target="_blank" rel="noopener">Plivo India</a>, <a href="https://www.twilio.com/en-us/voice/pricing/in" target="_blank" rel="noopener">Twilio India</a> and <a href="https://www.twilio.com/en-us/guidelines/in/voice" target="_blank" rel="noopener">its India rules</a>, <a href="https://developer.exotel.com/docs/faqs/pricing-plans" target="_blank" rel="noopener">Exotel</a> (no published per-minute rate; the figure used is a third-party estimate)</li>
+          <li>Razorpay: <a href="https://razorpay.com/pricing/" target="_blank" rel="noopener">razorpay.com/pricing</a></li>
+          <li>IVR prompts: <a href="https://twilio.com/en-us/changelog/new-text-to-speech-voices-for-say-update-03-2025" target="_blank" rel="noopener">Twilio text-to-speech rates</a>, <a href="https://devplivo.plivo.com/voice/pricing" target="_blank" rel="noopener">Plivo pricing mirror</a>, <a href="https://bonvoice.com/insights/ivr-pricing-in-india/" target="_blank" rel="noopener">India IVR rate range (vendor guide)</a></li>
+          <li>Hosting (servers for the apps and API endpoints) isn't included here.</li>
+          <li>Claude tokens per call are our estimate for this script: about 5 turns, ~1,400 input and ~250 output tokens per turn (low effort), so ~7,000 in and ~1,250 out per one-minute call. Real calls vary; ElevenLabs reports each call's actual cost, and the clinic row shows it.</li>
+          <li>Rupee figures use the exchange rate you set above. All prices exclude GST unless stated; add 18% GST where your provider charges it.</li>
+        </ul>
+      </section>
+    </div>
+
+    <script type="module">
+      // ---------- prices (USD unless marked ₹) ----------
+      const P = {
+        google: { // per 1,000 requests, India, up to 5M; free per month
+          essentials: { price: 1.5, free: 70000 },
+          pro: { price: 3.0, free: 35000 },
+          enterprise: { price: 4.5, free: 7000 }
+        },
+        claude: { // per million tokens
+          opus: { label: "Claude Opus 5.5", in: 4, out: 20 },
+          sonnet: { label: "Claude Sonnet 5.5", in: 2, out: 10 },
+          haiku: { label: "Claude Haiku 5.5", in: 0.1, out: 0.5 }
+        },
+        tokensPerMin: { in: 7000, out: 1250 }, // estimate for this call script
+        eleven: {
+          perMin: 0.08,
+          llmMarkup: 1.1, // some Claude models billed at Vertex regional rates, ~10% above base
+          plans: [["Free", 0, 15, 4], ["Starter", 6, 75, 6], ["Creator", 22, 275, 10], ["Pro", 99, 1238, 20], ["Scale", 299, 3738, 30], ["Business", 990, 12375, 40]]
+        },
+        // ttsPer100Chars: what the carrier charges for spoken IVR prompts (USD).
+        phone: {
+          plivo: { label: "Plivo SIP (₹0.38/min, 30-s pulses)", inrPerMin: 0.38, pulseSec: 30, inrNumber: 200, ttsPer100Chars: 0 },
+          exotel: { label: "Exotel (≈₹0.80/min, estimate)", inrPerMin: 0.8, pulseSec: 60, inrNumber: 0, ttsPer100Chars: 0 },
+          twilio: { label: "Twilio ($0.0496/min, intl number)", usdPerMin: 0.0496, pulseSec: 60, usdNumber: 1.15, ttsPer100Chars: 0.0008 }
+        },
+        // IVR prompts per call: menu + "how far" + goodbye, ~550 characters
+        // spoken; with recorded audio only the name / time / doctor (~120) are
+        // spoken by text-to-speech.
+        ivr: { ttsChars: 550, ttsCharsRecorded: 120 },
+        razorpay: { pct: 2, gst: 18 }
+      };
+
+      const INPUTS = [
+        ["clinics", "Clinics", 1, "number", { min: 1 }],
+        ["perDay", "Appointments per clinic per day", 40, "number", { min: 0 }],
+        ["days", "Working days per month", 26, "number", { min: 1, max: 31 }],
+        ["tripPct", "Patients who open the trip planner (%)", 60, "number", { min: 0, max: 100 }],
+        ["callPct", "Patients who get an arrival call (%)", 35, "number", { min: 0, max: 100, hint: "Not here 15 min before the slot and not sharing location." }],
+        ["followPct", "Calls that need a follow-up (%)", 10, "number", { min: 0, max: 100 }],
+        ["callMin", "Average call length (minutes)", 1, "number", { min: 0.25, step: 0.25 }],
+        ["engine", "Arrival call engine", "eleven_phone", "select", { options: [["script", "Scripted (no AI, in app)"], ["claude", "Claude + browser speech (in app)"], ["eleven_app", "ElevenLabs + Claude (in app)"], ["ivr_phone", "IVR keypad menu (real phone call, no AI)"], ["eleven_phone", "ElevenLabs + Claude (real phone call)"]] }],
+        ["ivrSec", "IVR call length (seconds)", 45, "number", { min: 10, step: 5, hint: "Menu, one keypress for distance, goodbye. Usually 30–60 s." }],
+        ["ivrAudio", "IVR prompts", "recorded", "select", { options: [["recorded", "Recorded once (English + Tamil)"], ["tts", "Text-to-speech every call"]] }],
+        ["model", "Claude model for calls", "opus", "select", { options: Object.entries(P.claude).map(([k, m]) => [k, m.label]) }],
+        ["phone", "Phone line (real calls)", "plivo", "select", { options: Object.entries(P.phone).map(([k, m]) => [k, m.label]) }],
+        ["routes", "Trip planner routes", "all", "select", { options: [["all", "All modes (with two-wheeler and tolls)"], ["notolls", "All modes, no toll prices"], ["lean", "No two-wheeler, no tolls"], ["none", "Estimates only (no Google)"]] }],
+        ["prepaidPct", "Bookings paid online (%)", 50, "number", { min: 0, max: 100 }],
+        ["fee", "Average consultation fee (₹)", 500, "number", { min: 0 }],
+        ["fx", "USD → INR", 88, "number", { min: 1, step: 0.5, hint: "Set to today's rate." }]
+      ];
+
+      const v = Object.fromEntries(INPUTS.map(([k, , d]) => [k, d]));
+      try { Object.assign(v, JSON.parse(localStorage.getItem("ninto-costing") || "{}")); } catch {}
+
+      const el = id => document.getElementById(id);
+      const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+      const num = n => Math.round(n).toLocaleString("en-IN");
+      const inr = usd => `₹${Math.round(usd * v.fx).toLocaleString("en-IN")}`;
+      const inrSmall = usd => { const r = usd * v.fx; return r < 10 ? `₹${r.toFixed(2)}` : `₹${Math.round(r).toLocaleString("en-IN")}`; };
+      const usd = n => (n < 1 ? `$${n.toFixed(3)}` : `$${n.toLocaleString("en-US", { maximumFractionDigits: 2 })}`);
+
+      el("inputs").innerHTML = INPUTS.map(([k, label, , type, o]) => `<div class="field"><label for="in-${k}">${esc(label)}</label>${type === "select"
+        ? `<select id="in-${k}" data-k="${k}">${o.options.map(([val, l]) => `<option value="${val}">${esc(l)}</option>`).join("")}</select>`
+        : `<input id="in-${k}" data-k="${k}" type="number" ${o.min != null ? `min="${o.min}"` : ""} ${o.max != null ? `max="${o.max}"` : ""} step="${o.step ?? 1}" />`}${o.hint ? `<div class="hint">${esc(o.hint)}</div>` : ""}</div>`).join("");
+      for (const [k] of INPUTS) el(`in-${k}`).value = v[k];
+      el("inputs").addEventListener("input", e => {
+        const k = e.target.dataset.k;
+        if (!k) return;
+        v[k] = e.target.type === "number" ? Number(e.target.value) || 0 : e.target.value;
+        try { localStorage.setItem("ninto-costing", JSON.stringify(v)); } catch {}
+        render();
+      });
+
+      // ---------- the model ----------
+      const sku = (n, s) => (Math.max(0, n - s.free) / 1000) * s.price;
+
+      function google(plans) {
+        if (v.routes === "none") return { reqs: 0, cost: 0, lines: [], free: "—" };
+        // Per plan: walk + transit (Essentials); drive is Enterprise with tolls,
+        // Pro without; two-wheeler is Enterprise. Billed at the highest tier touched.
+        const ess = plans * 2;
+        const drivePro = v.routes === "all" ? 0 : plans;
+        const ent = (v.routes === "all" ? plans : 0) + (v.routes === "lean" ? 0 : plans);
+        const lines = [["Essentials (walk, transit)", ess, P.google.essentials], ["Pro (drive with traffic)", drivePro, P.google.pro], ["Enterprise (two-wheeler" + (v.routes === "all" ? ", drive with tolls" : "") + ")", ent, P.google.enterprise]].filter(l => l[1]);
+        const cost = lines.reduce((t, [, n, s]) => t + sku(n, s), 0);
+        // Plans a month before any tier starts billing: the tier whose free cap runs out first.
+        const perPlan = [[2, P.google.essentials], [v.routes === "all" ? 0 : 1, P.google.pro], [(v.routes === "all" ? 1 : 0) + (v.routes === "lean" ? 0 : 1), P.google.enterprise]].filter(([n]) => n);
+        const binding = Math.min(...perPlan.map(([n, s]) => s.free / n));
+        return { reqs: ess + drivePro + ent, cost, lines, freePlans: binding };
+      }
+
+      function claudePerCall(model, markup = 1) {
+        const m = P.claude[model];
+        return ((P.tokensPerMin.in * v.callMin * m.in + P.tokensPerMin.out * v.callMin * m.out) / 1e6) * markup;
+      }
+
+      function bestElevenPlan(minutes) {
+        let best = null;
+        for (const [name, price, incl, conc] of P.eleven.plans) {
+          if (!price && minutes > incl) continue; // the free plan isn't for paid overage or commercial use
+          const cost = price + Math.max(0, minutes - incl) * P.eleven.perMin;
+          if (!best || cost < best.cost) best = { name, price, incl, conc, cost, over: Math.max(0, minutes - incl) };
+        }
+        return best;
+      }
+
+      function phoneCost(calls) {
+        const p = P.phone[v.phone];
+        const billedMin = Math.ceil((v.callMin * 60) / p.pulseSec) * (p.pulseSec / 60);
+        const perCallUsd = p.inrPerMin != null ? (billedMin * p.inrPerMin) / v.fx : billedMin * p.usdPerMin;
+        const numberUsd = p.inrNumber != null ? p.inrNumber / v.fx : p.usdNumber ?? 0;
+        return { perCallUsd, numberUsd, total: calls * perCallUsd + numberUsd * v.clinics, billedMin };
+      }
+
+      // A keypad IVR: just the phone line and the spoken prompts. No AI, no
+      // ElevenLabs.
+      function ivrCost(calls) {
+        const p = P.phone[v.phone];
+        const billedMin = Math.ceil(v.ivrSec / p.pulseSec) * (p.pulseSec / 60);
+        const lineUsd = p.inrPerMin != null ? (billedMin * p.inrPerMin) / v.fx : billedMin * p.usdPerMin;
+        const chars = v.ivrAudio === "recorded" ? P.ivr.ttsCharsRecorded : P.ivr.ttsChars;
+        const ttsUsd = (chars / 100) * p.ttsPer100Chars;
+        const numberUsd = (p.inrNumber != null ? p.inrNumber / v.fx : p.usdNumber ?? 0) * v.clinics;
+        return { billedMin, lineUsd, ttsUsd, chars, numberUsd, perCall: lineUsd + ttsUsd, total: calls * (lineUsd + ttsUsd) + numberUsd };
+      }
+
+      function engineCost(engine, calls, minutes) {
+        if (engine === "script") return { total: 0, perCall: 0, parts: [] };
+        if (engine === "ivr_phone") {
+          const c = ivrCost(calls);
+          const name = P.phone[v.phone].label.split(" (")[0];
+          return {
+            total: c.total, perCall: c.perCall,
+            parts: [[`Phone line: ${name} (${num(calls)} calls × ${c.billedMin} min billed)`, calls * c.lineUsd], [`Number rental (${v.clinics})`, c.numberUsd], [`Spoken prompts (~${c.chars} characters a call)`, calls * c.ttsUsd]]
+          };
+        }
+        if (engine === "claude") {
+          const per = claudePerCall(v.model);
+          return { total: calls * per, perCall: per, parts: [["Claude tokens", calls * per]] };
+        }
+        const plan = bestElevenPlan(minutes);
+        const llmPer = claudePerCall(v.model, P.eleven.llmMarkup);
+        const parts = [[`ElevenLabs ${plan.name} plan (${num(plan.incl)} min incl.)`, plan.price], [`ElevenLabs extra minutes (${num(plan.over)} × $0.08)`, plan.over * P.eleven.perMin], ["Claude via ElevenLabs (+~10%)", calls * llmPer]];
+        let perCall = (plan.cost / Math.max(1, calls)) + llmPer;
+        if (engine === "eleven_phone") {
+          const ph = phoneCost(calls);
+          parts.push([`Phone line: ${P.phone[v.phone].label.split(" (")[0]}`, ph.total]);
+          perCall += ph.perCallUsd;
+        }
+        return { total: parts.reduce((t, [, c]) => t + c, 0), perCall, parts, plan };
+      }
+
+      function render() {
+        const appts = v.clinics * v.perDay * v.days;
+        const plans = appts * v.tripPct / 100;
+        const calls = appts * v.callPct / 100 * (1 + v.followPct / 100);
+        const minutes = calls * v.callMin;
+        const g = google(plans);
+        const eng = engineCost(v.engine, calls, minutes);
+        const prepaid = appts * v.prepaidPct / 100;
+        const rzpInr = prepaid * v.fee * (P.razorpay.pct / 100) * (1 + P.razorpay.gst / 100);
+        const engineLabel = INPUTS.find(i => i[0] === "engine")[4].options.find(o => o[0] === v.engine)[1];
+
+        const rows = [
+          ["Google Maps (trip planner)", `${num(plans)} plans · ${num(g.reqs)} route requests`, v.routes === "none" ? "Not used" : `About ${num(g.freePlans)} plans a month`, g.cost],
+          [`Arrival calls: ${engineLabel}`, v.engine === "script" ? `${num(calls)} calls` : v.engine === "ivr_phone" ? `${num(calls)} calls · ${num(calls * v.ivrSec / 60)} min` : `${num(calls)} calls · ${num(minutes)} min`,
+            v.engine === "script" ? "Free" : v.engine === "claude" ? "Only Anthropic's small trial credit" : v.engine === "ivr_phone" ? "None (pay per minute)" : `${eng.plan.name} plan: ${num(eng.plan.incl)} min included`, eng.total]
+        ];
+        const total = rows.reduce((t, r) => t + r[3], 0);
+        const rzpUsd = rzpInr / v.fx;
+
+        el("totals").innerHTML = [
+          ["Per month (running cost)", inr(total), `${usd(total)} · excl. payment fees and hosting`],
+          ["Per appointment", inrSmall(total / Math.max(1, appts)), `${num(appts)} appointments a month`],
+          ["Per arrival call", v.engine === "script" ? "₹0" : inrSmall(eng.perCall), `${num(calls)} calls a month${v.engine === "ivr_phone" ? " + number rental" : ""}`],
+          ["Razorpay fees", `₹${num(rzpInr)}`, `on ₹${num(prepaid * v.fee)} collected online`]
+        ].map(([k, val, s]) => `<div class="total"><div class="k">${k}</div><div class="v">${val}</div><div class="s">${s}</div></div>`).join("");
+
+        el("breakdown").innerHTML = `<thead><tr><th>Service</th><th>Your usage</th><th>Free allowance</th><th class="n">Per month</th><th class="n">Per appointment</th></tr></thead><tbody>
+          ${rows.map(([name, use, free, c]) => `<tr><td><b>${esc(name)}</b></td><td>${esc(use)}</td><td>${esc(free)}</td><td class="n">${c ? `${inr(c)}<div class="s">${usd(c)}</div>` : `<span class="free">₹0</span>`}</td><td class="n">${inrSmall(c / Math.max(1, appts))}</td></tr>`).join("")}
+          ${g.lines.map(([l, n, s]) => `<tr><td class="s">↳ Google ${esc(l)}</td><td class="s">${num(n)} requests</td><td class="s">${num(s.free)} free</td><td class="n s">${usd(sku(n, s))}</td><td></td></tr>`).join("")}
+          ${eng.parts.map(([l, c]) => `<tr><td class="s">↳ ${esc(l)}</td><td></td><td></td><td class="n s">${usd(c)}</td><td></td></tr>`).join("")}
+          <tr class="sum"><td>Running cost</td><td></td><td></td><td class="n">${inr(total)}</td><td class="n">${inrSmall(total / Math.max(1, appts))}</td></tr>
+          <tr><td><b>Razorpay</b> <span class="s">(deducted from collections, not billed)</span></td><td>${num(prepaid)} online payments</td><td>No free tier; ₹0 setup</td><td class="n">₹${num(rzpInr)}<div class="s">${usd(rzpUsd)}</div></td><td class="n">${inrSmall(rzpUsd / Math.max(1, appts))}</td></tr>
+        </tbody>`;
+
+        const freeBits = [
+          v.routes === "none" ? null : `Google covers about <b>${num(g.freePlans)}</b> trip plans a month free (you'd use ${num(plans)})`,
+          v.engine.startsWith("eleven") ? `ElevenLabs' free plan has 15 call minutes; at ${num(minutes)} minutes the ${eng.plan.name} plan is cheapest` : null,
+          v.engine === "ivr_phone" ? "An IVR has no AI cost at all: you pay only the phone minutes (and, on Twilio, the spoken prompts)" : null,
+          "Scripted calls and browser speech cost nothing"
+        ].filter(Boolean);
+        el("freeline").innerHTML = `<b>What's free:</b> ${freeBits.join(". ")}.`;
+
+        // Engine comparison at this volume.
+        const engines = INPUTS.find(i => i[0] === "engine")[4].options;
+        el("enginecmp").innerHTML = `<thead><tr><th>Engine</th><th>Real phone call</th><th>Voice quality</th><th class="n">Per call</th><th class="n">Per month</th></tr></thead><tbody>
+          ${engines.map(([k, l]) => {
+            const e = engineCost(k, calls, minutes);
+            return `<tr class="${k === v.engine ? "on" : ""}"><td><b>${esc(l)}</b></td><td>${k.endsWith("_phone") ? "Yes" : "No, rings in the app"}</td><td>${{ script: "Fixed questions, browser voice", claude: "Smart, but robotic browser voice", eleven_app: "Natural voice, interruptions handled", ivr_phone: "Keypad menu: ETA in ranges, no notes for the doctor", eleven_phone: "Natural voice, on the patient's phone" }[k]}</td><td class="n">${e.perCall ? inrSmall(e.perCall) : "₹0"}</td><td class="n">${e.total ? inr(e.total) : "₹0"}</td></tr>`;
+          }).join("")}</tbody>`;
+
+        // One call, itemised, per model.
+        const plan = bestElevenPlan(minutes);
+        const platformPer = calls ? plan.cost / calls : P.eleven.perMin * v.callMin;
+        const ph = phoneCost(1);
+        const ivr = ivrCost(1);
+        el("percall").innerHTML = `<thead><tr><th>One ${v.callMin}-minute call</th>${Object.values(P.claude).map(m => `<th class="n">${m.label.replace("Claude ", "")}</th>`).join("")}</tr></thead><tbody>
+          <tr><td>Claude tokens (~${num(P.tokensPerMin.in * v.callMin)} in, ~${num(P.tokensPerMin.out * v.callMin)} out)</td>${Object.keys(P.claude).map(k => `<td class="n">${inrSmall(claudePerCall(k))}</td>`).join("")}</tr>
+          <tr><td>+ ElevenLabs platform <span class="s">(${plan.name} plan, spread over your calls)</span></td>${Object.keys(P.claude).map(() => `<td class="n">${inrSmall(platformPer)}</td>`).join("")}</tr>
+          <tr><td>+ Phone line <span class="s">(${esc(P.phone[v.phone].label.split(" (")[0])}, billed ${ph.billedMin} min)</span></td>${Object.keys(P.claude).map(() => `<td class="n">${inrSmall(ph.perCallUsd)}</td>`).join("")}</tr>
+          <tr class="sum"><td>ElevenLabs phone call, total</td>${Object.keys(P.claude).map(k => `<td class="n">${inrSmall(claudePerCall(k, P.eleven.llmMarkup) + platformPer + ph.perCallUsd)}</td>`).join("")}</tr>
+          <tr><td>For comparison: <b>IVR phone call</b> (${v.ivrSec} s, no Claude)<div class="s">Line ${inrSmall(ivr.lineUsd)} + prompts ${inrSmall(ivr.ttsUsd)}</div></td>${Object.keys(P.claude).map(() => `<td class="n">${inrSmall(ivr.perCall)}</td>`).join("")}</tr>
+        </tbody>`;
+
+        renderServices(g, plans, calls, minutes);
+      }
+
+      function renderServices(g, plans, calls, minutes) {
+        const svc = (name, tag, free, pay, use, src) => `<div class="svc"><div><h3>${name}</h3><div class="tag">${tag}</div></div><div>
+          <div class="lede"><span class="free">Free:</span> ${free}</div>
+          <ul>${pay.map(x => `<li>${x}</li>`).join("")}</ul>
+          <div class="lede" style="margin-top:6px"><b>How we use it:</b> ${use}</div>
+          <div class="src">${src}</div></div></div>`;
+        el("svc").innerHTML = [
+          svc("Google Maps Routes API", "Trip planner",
+            "every month, 70,000 Essentials, 35,000 Pro and 7,000 Enterprise requests (India pricing).",
+            ["Essentials $1.50, Pro $3.00, Enterprise $4.50 per 1,000 requests (up to 5M; cheaper beyond).",
+             "A request is billed at the <b>highest</b> tier it touches: live traffic → Pro; two-wheeler or toll prices → Enterprise.",
+             `Each trip plan = 4 requests (walk, transit, car, two-wheeler), cached 5 min per starting point. With every mode on, the two-wheeler and toll requests use up Enterprise's 7,000 first, so about <b>3,500 plans a month are free</b>.`,
+             "Cheaper: turn off toll prices (car drops to Pro) or the two-wheeler route in the routes function."],
+            "time with live traffic, distance, tolls and bus/metro fare. Auto, cab and fuel prices are our own fare rules, since Google doesn't price them.",
+            "Key: GOOGLE_MAPS_API_KEY (server only). Without it the planner uses estimates, free."),
+          svc("Anthropic Claude API", "The brain of the AI call",
+            "only a small trial credit for new accounts; no ongoing free tier.",
+            ["Per million tokens: Opus 5.5 $4 in / $20 out; Sonnet 5.5 $2 / $10; Haiku 5.5 $0.10 / $0.50.",
+             `Our script uses roughly 7,000 input and 1,250 output tokens per one-minute call (about 5 turns), so about ${inrSmall(claudePerCall("opus"))} on Opus, ${inrSmall(claudePerCall("sonnet"))} on Sonnet, ${inrSmall(claudePerCall("haiku"))} on Haiku.`,
+             "Through ElevenLabs, the same Claude usage is passed through at the provider's rate (some Claude models at ~10% higher regional rates). You don't pay Anthropic separately for those calls.",
+             "We use Opus 5.5 by default. Haiku is about 40× cheaper per call and may be enough for this short script. Test it on real calls before switching."],
+            "deciding what to say on the arrival call and writing the clinic's summary (coming or not, ETA, travel mode, note for the doctor).",
+            "Key: ANTHROPIC_API_KEY (server only), for the Claude + browser speech engine."),
+          svc("ElevenLabs Agents", "Voice, hearing, phone line",
+            "15 call minutes a month on the free plan (4 calls at once).",
+            ["Plans: Starter $6 (75 min), Creator $22 (275 min), Pro $99 (1,238 min), Scale $299 (3,738 min), Business $990 (12,375 min). Every extra minute $0.08.",
+             "Calls above your plan's concurrency (up to 3×) cost $0.16 a minute. Silence while the AI thinks is billed at 5%.",
+             "Claude (the LLM) is billed on top, per token, with no ElevenLabs markup. Phone-line charges come from your carrier, not ElevenLabs.",
+             "Tamil: supported for both speaking (Multilingual v2, Flash v2.5) and hearing (Scribe, 'high accuracy'). Still test with real patients."],
+            `${num(minutes)} call minutes a month at your settings. Each call's real cost comes back from ElevenLabs and shows on the clinic row.`,
+            "Keys: ELEVENLABS_API_KEY, ELEVENLABS_AGENT_ID (+ phone number id for real calls)."),
+          svc("Phone line (real calls only)", "Carrier",
+            "none.",
+            ["<b>Plivo:</b> ₹0.38/min within India, billed in 30-second pulses; ₹200/month per number. India-registered businesses only.",
+             "<b>Exotel:</b> no published per-minute rate (third-party figure ≈ ₹0.80/min); prepaid bundles from ₹9,999; 18% GST.",
+             "<b>Twilio:</b> $0.0496/min to Indian mobiles, but it can only call India from a <b>non-Indian</b> number, which patients may not pick up.",
+             "Patients must have agreed to be called (TRAI rules), e.g. a checkbox at booking."],
+            "ElevenLabs places the call over a SIP trunk from the carrier (recommended for India) or Twilio.",
+            "Set ELEVENLABS_PHONE_PROVIDER=sip or twilio."),
+          svc("Razorpay", "Payments",
+            "₹0 setup, ₹0 annual fee.",
+            ["2% per online payment (cards, netbanking, wallets, UPI), plus 18% GST on the fee.",
+             "UPI is MDR-free by RBI rule, but Razorpay's Standard plan still lists a 2% platform fee; ask them about lower UPI pricing.",
+             "Payment links: no extra fee beyond the normal 2%."],
+            "deducted from what you collect, so it's not a bill. Cash at the counter costs nothing.",
+            "Keys: RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET."),
+          svc("IVR (keypad menu)", "Arrival calls without AI",
+            "no AI or ElevenLabs cost. You pay only the phone minutes, plus spoken prompts on Twilio.",
+            [`A call is short (~${v.ivrSec} s): "Press 1 if you're on the way, 2 if you're at the clinic, 3 to cancel", then one press for how far away (under 10 / 10–20 / 20–40 / 40+ min). That's ${inrSmall(ivrCost(1).perCall)} a call at your settings.`,
+             "<b>Spoken prompts:</b> Twilio charges $0.0008 per 100 characters for standard voices (a few paise a call). Plivo lists multilingual text-to-speech at ₹0 (from a mirror of its pricing page; confirm). Exotel doesn't publish a rate.",
+             "<b>Tamil:</b> Amazon Polly (behind many carriers' text-to-speech) has no Tamil voice. Record the Tamil (and English) prompts once and play them; only the name, time and doctor need text-to-speech or recorded snippets.",
+             "<b>What you give up vs. the AI call:</b> ETA comes in ranges, not minutes; no travel mode unless you add a menu; no note for the doctor; no free-form answers. Fewer people complete keypad menus than talk to a voice.",
+             "Same phone-line rules as the AI call: an Indian carrier (Plivo, Exotel) for Indian numbers, and patient consent (TRAI)."],
+            "the demo's IVR option (Settings → Call type → IVR) is this flow, simulated in the patient app. A real one runs on the carrier's IVR (Plivo XML GetDigits, Exotel flows, Twilio Gather), with a small server endpoint answering each step.",
+            "Sources: <a href=\"https://www.plivo.com/voice/pricing/in/\" target=\"_blank\" rel=\"noopener\">Plivo India</a> · <a href=\"https://devplivo.plivo.com/voice/pricing\" target=\"_blank\" rel=\"noopener\">Plivo pricing mirror (TTS ₹0)</a> · <a href=\"https://twilio.com/en-us/changelog/new-text-to-speech-voices-for-say-update-03-2025\" target=\"_blank\" rel=\"noopener\">Twilio text-to-speech rates</a> · <a href=\"https://bonvoice.com/insights/ivr-pricing-in-india/\" target=\"_blank\" rel=\"noopener\">India IVR rates ₹0.40–0.65/min (vendor guide)</a>")
+        ].join("");
+      }
+
+      render();
+    </script>
+  </body>
+</html>
