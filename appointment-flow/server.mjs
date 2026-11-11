@@ -15,8 +15,9 @@ import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import razorpay from "../netlify/functions/razorpay.mjs";
 import aiCall from "../netlify/functions/ai-call.mjs";
-import routes from "../netlify/functions/routes.mjs";
+import routes, { authMode as routesAuth } from "../netlify/functions/routes.mjs";
 import elevenlabs from "../netlify/functions/elevenlabs.mjs";
+import exotel from "../netlify/functions/exotel.mjs";
 
 const PORT = process.env.PORT || 8000;
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -43,13 +44,15 @@ app.all("/api/razorpay/*", express.raw({ type: () => true }), mount(razorpay));
 app.all("/api/ai-call/*", express.raw({ type: () => true }), mount(aiCall));
 app.all("/api/routes/*", express.raw({ type: () => true }), mount(routes));
 app.all("/api/elevenlabs/*", express.raw({ type: () => true }), mount(elevenlabs));
+app.all("/api/exotel/*", express.raw({ type: () => true }), mount(exotel));
 
 app.use(express.static(__dirname));
 
 app.listen(PORT, () => {
   console.log(`Listening on http://localhost:${PORT}`);
   console.log(`Razorpay: ${process.env.RAZORPAY_KEY_ID ? "test keys loaded" : "no keys -- simulated gateway"}`);
-  console.log(`Routes: ${process.env.GOOGLE_MAPS_API_KEY ? "Google Maps Routes API" : "no GOOGLE_MAPS_API_KEY -- built-in estimates"}`);
+  routesAuth().then(m => console.log(`Routes: ${m.auth === "adc" ? `Google Maps Routes API (ADC as ${m.account}, billed to ${process.env.GOOGLE_CLOUD_PROJECT || "radiant-psyche-413003"})` : m.auth === "api_key" ? "Google Maps Routes API (API key)" : `built-in estimates -- ${m.reason}`}`));
   console.log(`AI calls: ${process.env.ANTHROPIC_API_KEY ? "Claude (live)" : "no ANTHROPIC_API_KEY -- scripted calls"}`);
+  console.log(`Exotel IVR: ${process.env.EXOTEL_API_KEY && process.env.EXOTEL_APP_ID ? `set (caller ${process.env.EXOTEL_CALLER_ID || "?"})` : "not set -- simulated IVR calls"}`);
   console.log(`ElevenLabs: ${process.env.ELEVENLABS_API_KEY ? `key set${process.env.ELEVENLABS_AGENT_ID ? ", agent set" : ", no agent yet (POST /api/elevenlabs/setup)"}${process.env.ELEVENLABS_PHONE_NUMBER_ID ? ", phone number set" : ""}` : "no ELEVENLABS_API_KEY"}`);
 });

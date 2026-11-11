@@ -9,7 +9,8 @@
 // after each write, so whichever app moves the clock moves the day forward.
 
 import { MIN, HOUR, at, minOfDay, round5, t12, tms, uid, ymd, rupees } from "./util.js";
-import { MODE_LABELS, travelMin } from "./trip.js";
+import { MODE_LABELS, travelMin, CLINIC_LL } from "./trip.js";
+import { liveEta } from "./eta.js";
 
 const ACTIVE = ["booked", "reserved", "late", "checked_in", "in_consult"];
 const NOT_ARRIVED = ["booked", "reserved", "late"];
@@ -316,8 +317,11 @@ export function arrivalOf(s, a) {
   const now = s.clock.nowMs;
   const loc = a.location;
   if (loc?.sharing && locationFresh(s, a)) {
+    // Live ETA from the phone (Google traffic + real pace) when it has one.
+    const live = liveEta(loc, now);
+    if (live) return { etaMs: now + live.minutes * MIN, source: "location", label: `live ETA from their phone, ~${live.minutes} min (${live.label})`, firm: true, live };
     const mins = etaMin(loc, now);
-    return { etaMs: now + mins * MIN, source: "location", label: `${loc.distanceKm.toFixed(1)} km away, ~${mins} min by ${MODE_LABELS[loc.mode]?.toLowerCase() ?? "road"}`, firm: true };
+    return { etaMs: now + mins * MIN, source: "location", label: `live ETA from their phone, ~${mins} min`, firm: true };
   }
   const told = [];
   if (a.trip) told.push({ at: a.trip.startedAt, etaMs: a.trip.etaMs, source: "trip", label: `Left at ${tms(a.trip.startedAt)} by ${MODE_LABELS[a.trip.mode]?.toLowerCase()}` });
@@ -428,12 +432,16 @@ export function callEngine(s) {
   return e === "auto" ? "claude" : e ?? "claude";
 }
 
+// Arrival calls are real IVR phone calls: a recorded keypad menu on the
+// patient's phone (1 on the way -> how far, 2 at the clinic, 3 cancel). No
+// in-app calls and no AI. Until a telephony provider is connected the call
+// is simulated: reception enters the keypress from the clinic app.
+// (Older demo state may hold in-app calls; callChannel tells them apart.)
+export const callChannel = c => c.channel ?? (c.provider === "elevenlabs_phone" ? "phone" : "app");
 export function startCall(s, a, trigger) {
-  const engine = s.settings.callType === "ivr" ? "ivr" : callEngine(s);
-  const provider = engine === "elevenlabs" && s.settings.elevenDelivery === "phone" ? "elevenlabs_phone" : engine;
-  const call = { id: uid("call"), type: s.settings.callType, lang: s.settings.callLanguage, trigger, provider, status: "ringing", startedAt: s.clock.nowMs, outcome: null, etaMin: null, coming: null, mode: null, summary: "", engine: null, transcript: [] };
+  const call = { id: uid("call"), type: "ivr", lang: s.settings.callLanguage, trigger, channel: "phone", provider: "ivr_phone", status: "ringing", startedAt: s.clock.nowMs, outcome: null, etaMin: null, coming: null, mode: null, summary: "", engine: "ivr", transcript: [] };
   a.calls.push(call);
-  log(s, `${call.type === "ivr" ? "IVR" : provider === "elevenlabs_phone" ? "ElevenLabs phone" : "Voice AI"} call to ${patientOf(s, a).name} (${trigger})`);
+  log(s, `IVR phone call to ${patientOf(s, a).name} (${trigger})`);
   return call;
 }
 
@@ -472,17 +480,19 @@ export function callFacts(s, a, lang = s.settings.callLanguage) {
 export function finishCall(s, a, { outcome, etaMin = null, transcript = [], note = "", coming = null, mode = null, summary = "", engine = null, costUsd = null, durationSecs = null }) {
   const call = a.calls.at(-1);
   if (!call || call.status === "done") return;
-  coming ??= { eta: "yes", at_clinic: "yes", cancelled: "no", no_answer: null }[outcome] ?? "unsure";
+  const COMING = { eta: "yes", at_clinic: "yes", cancelled: "no", no_answer: null };
+  coming ??= outcome in COMING ? COMING[outcome] : "unsure";
   Object.assign(call, { status: "done", outcome, etaMin, transcript, note, coming, mode, summary, engine: engine ?? call.engine, costUsd, durationSecs, endedAt: s.clock.nowMs });
   if (outcome === "cancelled") cancelAppointment(s, a, "patient");
-  log(s, `Call result for ${patientOf(s, a).name}: ${callResultText(call)}`);
+  log(s, `Call result for ${patientOf(s, a).name}: ${callResultText(call, { withMode: false })}`);
 }
 
-export function callResultText(call) {
+// withMode: false for the clinic, which isn't shown how patients travel.
+export function callResultText(call, { withMode = true } = {}) {
   if (!call) return "";
   if (call.status === "ringing") return "Calling now…";
   if (call.status === "in_progress") return "On the call now…";
-  const how = call.mode && MODE_LABELS[call.mode] ? ` by ${MODE_LABELS[call.mode].toLowerCase()}` : "";
+  const how = withMode && call.mode && MODE_LABELS[call.mode] ? ` by ${MODE_LABELS[call.mode].toLowerCase()}` : "";
   return {
     eta: `Coming: about ${call.etaMin} min${how}`,
     at_clinic: "Coming: at the clinic, not checked in",
@@ -509,12 +519,19 @@ export function etaMin(loc, atMs = Date.now()) {
 // what the planner showed; live location, if shared, takes over from it.
 export function startTrip(s, a, { mode, etaMs, distanceKm, cost, source = "estimate" }) {
   a.trip = { mode, etaMs, distanceKm, cost, source, startedAt: s.clock.nowMs };
-  log(s, `${patientOf(s, a).name} set off by ${MODE_LABELS[mode]}, expected ${tms(etaMs)}`);
+  log(s, `${patientOf(s, a).name} set off, arriving ${tms(etaMs)}`);
 }
 
-export function startSharing(s, a, mode, distanceKm) {
-  a.location = { sharing: true, mode, distanceKm, startKm: distanceKm, startedAt: s.clock.nowMs, updatedAt: s.clock.nowMs, moving: true, sending: true };
-  log(s, `${patientOf(s, a).name} is on the way (${TRAVEL_MODES[mode]}, ${distanceKm.toFixed(1)} km)`);
+// origin: where they set off ({ lat, lng }). The demo moves them in a straight
+// line from there to the clinic; a real phone would write lat/lng from GPS.
+// Privacy: location (lat/lng, distance, track) is for the patient's phone only,
+// to work out the ETA. The clinic is shown only the ETA. In production only
+// a.location.eta and the derived arrival time would leave the phone; this demo
+// keeps one shared store for both apps, so the clinic app simply never reads
+// the location fields.
+export function startSharing(s, a, mode, distanceKm, origin = null) {
+  a.location = { sharing: true, mode, distanceKm, startKm: distanceKm, startedAt: s.clock.nowMs, updatedAt: s.clock.nowMs, moving: true, sending: true, origin, ...(origin ? { lat: origin.lat, lng: origin.lng } : {}), track: [{ at: s.clock.nowMs, km: distanceKm }], eta: null };
+  log(s, `${patientOf(s, a).name} is on the way, sharing their ETA`);
 }
 
 // ---------- the time-based rules ----------
@@ -563,6 +580,15 @@ export function runEngine(s) {
         const speed = loc.distanceKm / Math.max(1, etaMin(loc, now)) * 60;
         loc.distanceKm = Math.max(0, loc.distanceKm - (speed * dt) / HOUR);
       }
+      if (loc.origin && loc.startKm > 0) {
+        const f = loc.distanceKm / loc.startKm;
+        loc.lat = CLINIC_LL.lat + (loc.origin.lat - CLINIC_LL.lat) * f;
+        loc.lng = CLINIC_LL.lng + (loc.origin.lng - CLINIC_LL.lng) * f;
+      }
+      // Last ~10 minutes of samples, for the phone's pace / mode guess.
+      if (dt) {
+        loc.track = [...(loc.track ?? []), { at: now, km: loc.distanceKm }].filter(p => now - p.at <= 10 * MIN).slice(-30);
+      }
       loc.updatedAt = now;
       if (loc.distanceKm <= NEAR_KM && !a.flags.nearPrompted) {
         a.flags.nearPrompted = true;
@@ -603,15 +629,19 @@ export function runEngine(s) {
       continue;
     }
 
-    // Arrival call for anyone not here by the trigger time -- unless live
-    // location already tells us. One follow-up if they promised a time and
-    // are 10+ min past it.
-    if (notArrived(a) && !a.calls.length && !locationFresh(s, a) && now >= slotMs - st.callBeforeMin * MIN) startCall(s, a, "auto");
+    // IVR call for anyone not here by the trigger time -- unless their live
+    // ETA already tells us. One follow-up if they gave a time and are 10+
+    // min past it.
+    const quiet = notArrived(a) && !locationFresh(s, a);
+    if (quiet && !a.calls.length && now >= slotMs - st.callBeforeMin * MIN) startCall(s, a, "auto");
     const last = a.calls.at(-1);
-    if (notArrived(a) && a.calls.length === 1 && last.status === "done" && last.outcome === "eta" && !locationFresh(s, a) && now >= (last.endedAt ?? last.startedAt) + (last.etaMin + 10) * MIN) startCall(s, a, "follow-up");
+    const promised = a.calls.filter(c => c.status === "done" && c.outcome === "eta").at(-1);
+    if (quiet && promised && last.status === "done" && !a.calls.some(c => c.trigger === "follow-up") && now >= (promised.endedAt ?? promised.startedAt) + (promised.etaMin + 10) * MIN) startCall(s, a, "follow-up");
     const call = a.calls.at(-1);
     // Real phone calls are settled by ElevenLabs' result, not the demo clock.
-    if (call?.status === "ringing" && call.provider !== "elevenlabs_phone" && now - call.startedAt >= RING_MIN * MIN) finishCall(s, a, { outcome: "no_answer" });
+    // Real calls (Exotel, ElevenLabs) are settled by the provider's result. A
+    // simulated IVR call waits for reception to enter the keypress (or "No answer").
+    if (call?.status === "ringing" && !["elevenlabs_phone", "ivr_phone", "exotel"].includes(call.provider) && now - call.startedAt >= RING_MIN * MIN) finishCall(s, a, { outcome: "no_answer" });
 
     // Push only when the expected time shifts by 15+ minutes.
     if (a.status === "booked" || a.status === "checked_in") {

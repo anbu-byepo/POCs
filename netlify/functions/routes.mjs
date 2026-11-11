@@ -6,18 +6,37 @@
  * local dev, by appointment-flow/server.mjs (which imports this same handler).
  *
  *   GET  /api/routes/config   -> { live, reason }
+ *   POST /api/routes/eta      { origin, destination, mode: "drive" | "walk" }
+ *        -> { minutes, staticMinutes, km }: one live-traffic ETA for a patient on
+ *           the way. The phone works out pace and mode (shared/eta.js) and asks
+ *           this every few minutes. Only duration and distance are requested, so
+ *           drive is billed as Pro (traffic) and walk as Essentials.
  *   POST /api/routes/compute  { origin: { lat, lng }, destination: { lat, lng } }
  *        -> { drive, two_wheeler, walk, transit }, each null if Google had no route:
  *           { minutes, staticMinutes, km, tolls (rupees | null), fare (rupees | null),
  *             fareText, lines: ["Bus 23C", "Metro Blue"], walkMinutes }
  *
- * Env: GOOGLE_MAPS_API_KEY (Routes API enabled). Without it, /config says so
- * and the patient app falls back to its built-in route estimates.
+ * Auth: OAuth 2.0 through Application Default Credentials (google-auth-library),
+ * as the dev service account development@ninto-dev-502310.iam.gserviceaccount.com.
+ * Usage is billed to the "Maps Provision" project (radiant-psyche-413003, Routes
+ * API enabled) via X-Goog-User-Project. ADC finds credentials in this order:
+ *   GOOGLE_SERVICE_ACCOUNT_JSON     key JSON (or base64), checked first by this file -- Netlify
+ *   GOOGLE_APPLICATION_CREDENTIALS  path to a credentials file
+ *   gcloud's ADC file               local dev, no key needed:
+ *       gcloud auth application-default login \
+ *         --impersonate-service-account=development@ninto-dev-502310.iam.gserviceaccount.com
+ *   GCP metadata server             when running on Cloud Run / GCE / Cloud Functions
+ *   GOOGLE_CLOUD_PROJECT            quota/billing project, default radiant-psyche-413003
+ * GOOGLE_MAPS_API_KEY is a fallback when ADC finds nothing. With neither, /config
+ * says so and the patient app uses built-in estimates. Credentials are looked
+ * up once per process: restart the server after changing them.
  *
  * Google gives time, distance, tolls and transit fares. It doesn't price autos,
  * cabs or fuel; the patient app computes those from the distance (see
  * shared/trip.js FARES).
  */
+
+import { GoogleAuth } from "google-auth-library";
 
 export const config = { path: "/api/routes/*" };
 
@@ -45,7 +64,44 @@ function json(body, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 }
 
-const key = () => process.env.GOOGLE_MAPS_API_KEY ?? "";
+const PROJECT = () => process.env.GOOGLE_CLOUD_PROJECT || "radiant-psyche-413003";
+const SCOPES = ["https://www.googleapis.com/auth/cloud-platform"];
+const apiKey = () => process.env.GOOGLE_MAPS_API_KEY ?? "";
+
+// ADC, plus GOOGLE_SERVICE_ACCOUNT_JSON for hosts like Netlify that can only
+// hold credentials in an env var. The library caches and refreshes tokens.
+let googleAuth;
+function getAuth() {
+  if (googleAuth) return googleAuth;
+  let raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim();
+  if (raw && !raw.startsWith("{")) raw = Buffer.from(raw, "base64").toString("utf8");
+  return (googleAuth = new GoogleAuth({ scopes: SCOPES, ...(raw ? { credentials: JSON.parse(raw) } : {}) }));
+}
+
+// Which auth the server will use, resolved once: { live, auth, account? } or
+// { live: false, reason }. `account` is for the server log, not the client.
+let modePromise;
+export function authMode() {
+  return (modePromise ??= (async () => {
+    try {
+      const client = await getAuth().getClient();
+      const account = client.email ?? client.targetPrincipal ?? (await getAuth().getCredentials().catch(() => ({}))).client_email ?? "user credentials";
+      return { live: true, auth: "adc", account };
+    } catch (err) {
+      if (apiKey()) return { live: true, auth: "api_key" };
+      return { live: false, reason: `No Google credentials (ADC: ${err.message.split("\n")[0]}) and no GOOGLE_MAPS_API_KEY` };
+    }
+  })());
+}
+
+async function authHeaders() {
+  if ((await authMode()).auth !== "adc") return { "X-Goog-Api-Key": apiKey() };
+  const client = await getAuth().getClient();
+  const { token } = await client.getAccessToken().catch(err => {
+    throw Object.assign(new Error(`Google OAuth: ${err.message}`), { status: 502 });
+  });
+  return { Authorization: `Bearer ${token}`, "X-Goog-User-Project": PROJECT() };
+}
 const seconds = d => (d ? parseFloat(d) : 0);
 const money = m => (m ? Number(m.units ?? 0) + (m.nanos ?? 0) / 1e9 : null);
 
@@ -68,7 +124,7 @@ async function route(mode, origin, destination) {
   };
   const res = await fetch(API, {
     method: "POST",
-    headers: { "content-type": "application/json", "X-Goog-Api-Key": key(), "X-Goog-FieldMask": FIELDS },
+    headers: { "content-type": "application/json", ...(await authHeaders()), "X-Goog-FieldMask": FIELDS },
     body: JSON.stringify(body)
   });
   const data = await res.json().catch(() => ({}));
@@ -93,15 +149,47 @@ async function route(mode, origin, destination) {
   };
 }
 
+// Live ETA for one mode, cached 2 min on a ~100 m grid.
+const ETA_FIELDS = "routes.duration,routes.staticDuration,routes.distanceMeters";
+const ETA_MODES = { drive: "DRIVE", walk: "WALK" };
+const etaCache = new Map();
+async function eta(body) {
+  const mode = ETA_MODES[body?.mode] ? body.mode : "drive";
+  const origin = point(body?.origin);
+  const destination = point(body?.destination);
+  const cacheKey = [mode, body.origin.lat, body.origin.lng, body.destination.lat, body.destination.lng].map(v => (typeof v === "number" ? v.toFixed(3) : v)).join(",");
+  const hit = etaCache.get(cacheKey);
+  if (hit && Date.now() - hit.at < 2 * 60 * 1000) return { ...hit.data, cached: true };
+  const res = await fetch(API, {
+    method: "POST",
+    headers: { "content-type": "application/json", ...(await authHeaders()), "X-Goog-FieldMask": ETA_FIELDS },
+    body: JSON.stringify({ origin, destination, travelMode: ETA_MODES[mode], ...(mode === "drive" ? { routingPreference: "TRAFFIC_AWARE" } : {}) })
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw Object.assign(new Error(data?.error?.message ?? `Routes API ${res.status}`), { status: 502 });
+  const r = data.routes?.[0];
+  if (!r) throw Object.assign(new Error("No route found"), { status: 404 });
+  const out = { mode, minutes: Math.max(1, Math.ceil(seconds(r.duration) / 60)), staticMinutes: Math.ceil(seconds(r.staticDuration) / 60), km: (r.distanceMeters ?? 0) / 1000 };
+  etaCache.set(cacheKey, { at: Date.now(), data: out });
+  return out;
+}
+
 export default async function handler(req) {
   const url = new URL(req.url);
   const path = url.pathname.replace(/^.*\/api\/routes\/?/, "");
   try {
     if (req.method === "GET" && path === "config") {
-      return json(key() ? { live: true } : { live: false, reason: "GOOGLE_MAPS_API_KEY not set" });
+      const { live, auth, reason } = await authMode();
+      return json(live ? { live, auth } : { live, reason });
+    }
+    if (req.method === "POST" && path === "eta") {
+      const mode = await authMode();
+      if (!mode.live) return json({ error: mode.reason }, 503);
+      return json(await eta(await req.json().catch(() => null)));
     }
     if (req.method === "POST" && path === "compute") {
-      if (!key()) return json({ error: "GOOGLE_MAPS_API_KEY not set" }, 503);
+      const mode = await authMode();
+      if (!mode.live) return json({ error: mode.reason }, 503);
       const body = await req.json().catch(() => null);
       const origin = point(body?.origin);
       const destination = point(body?.destination);

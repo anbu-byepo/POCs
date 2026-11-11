@@ -1,10 +1,10 @@
 /**
  * Clinic app (boards F1-F3 of the discussion doc). Schedule -> doctor -> the
  * day's queue, led by "Up next": the live projected order, with patients
- * still on the way placed by when they'll arrive (live location, trip, AI
+ * still on the way placed by when they'll arrive (live ETA, trip, AI
  * call, "I'll be late") instead of late = last. Then the filters (All,
  * Checked in, Completed, Booked, Others) with Now serving,
- * Reserved + grace countdown, Waiting, On the way and No-show; location and
+ * Reserved + grace countdown, Waiting, On the way and No-show; live ETA and
  * AI call results (coming or not, ETA, travel mode, summary, note for the
  * doctor) on each expected patient's row; the manual actions that are
  * always available (Mark arrived, Mark no-show, Reinsert, Swap, Call patient).
@@ -18,8 +18,8 @@
 import { getState, update, subscribe } from "../shared/store.js";
 import {
   slotsFor, createAppointment, confirmBooking, markPaid, cancelAppointment, markNoShow, checkIn, reinsert, swapWithNext,
-  callNext, completeCurrent, startConsult, line, estimate, estimateText, avgConsult, startCall, finishCall, callResultText, locationFresh,
-  etaMin, refundRule, refundQuote, isActive, notArrived, patientOf, doctorOf, notify, slotLabel, TRAVEL_MODES, today, nowMin,
+  callNext, completeCurrent, startConsult, line, estimate, estimateText, avgConsult, startCall, finishCall, callResultText, callChannel, locationFresh,
+  etaMin, refundRule, refundQuote, isActive, notArrived, patientOf, doctorOf, notify, slotLabel, today, nowMin,
   projection, arrivalOf, callFacts
 } from "../shared/flow.js";
 import { pay, createLink, gatewayInfo, startBackgroundWork, payerOf } from "../shared/payments.js";
@@ -65,30 +65,36 @@ const GROUPS = [
 ];
 const FILTERS = [["all", "All"], ["checked", "Checked in"], ["completed", "Completed"], ["booked", "Booked"], ["others", "Others"]];
 
-function locationLine(s, a) {
+// The clinic never sees where the patient is: only whether their phone is
+// sending a live ETA (worked out on the phone from their location).
+function etaShareLine(s, a) {
   const loc = a.location;
-  if (!loc) return `<span class="muted">Location not shared</span>`;
-  if (!loc.sharing) return `<span class="muted">Location sharing stopped</span>`;
-  if (!locationFresh(s, a)) return `📍 No update for ${Math.round((s.clock.nowMs - loc.updatedAt) / MIN)} min, treated as unknown`;
-  return `📍 ${loc.distanceKm.toFixed(1)} km away · about ${etaMin(loc, s.clock.nowMs)} min by ${esc(TRAVEL_MODES[loc.mode].toLowerCase())} · updated ${tms(loc.updatedAt)}${loc.moving ? "" : " · not moving"}`;
+  if (!loc) return `<span class="muted">Live ETA not shared</span>`;
+  if (!loc.sharing) return `<span class="muted">Live ETA sharing stopped</span>`;
+  if (!locationFresh(s, a)) return `⏱ No ETA update for ${Math.round((s.clock.nowMs - loc.updatedAt) / MIN)} min, treated as unknown`;
+  return `⏱ Live ETA from their phone · updated ${tms(loc.updatedAt)}`;
 }
 
 // Where this patient lands in the projected order, and why.
+// The clinic gets one exact arrival time and where it came from, never how
+// the patient is travelling or where they are.
+const ARRIVAL_SOURCE = { location: "live ETA from their phone", trip: "from their trip", call: "said on the call", patient: "said they're running late", slot: "assumed on time", grace: "slot held" };
 function arrivalLine(s, a) {
   const arr = arrivalOf(s, a);
   const est = estimate(s, a);
   if (!arr) return `🧭 <b>Arrival unknown</b> · placed after everyone else until we hear from them`;
-  return `🧭 ${arr.firm ? `<b>Expected ${tms(arr.etaMs)}</b>` : `Expected ${tms(arr.etaMs)}`} <span class="muted">(${esc(arr.label)}${arr.overdue ? ", now overdue" : ""})</span> → #${est.position} in line, in ~${tms(est.projectedMs)}`;
+  const updated = arr.source === "location" && a.location?.eta?.at ? `, updated ${tms(a.location.eta.at)}` : "";
+  return `🧭 ${arr.firm ? `<b>Arrives ${tms(arr.etaMs)}</b>` : `Arrives ${tms(arr.etaMs)}`} <span class="muted">(${ARRIVAL_SOURCE[arr.source] ?? ""}${updated}${arr.overdue ? ", now overdue" : ""})</span> → #${est.position} in line, in ~${tms(est.projectedMs)}`;
 }
 
 function callLine(a) {
   const call = a.calls.at(-1);
   if (!call) return "";
-  const kind = call.type === "ivr" ? "IVR" : call.provider === "elevenlabs_phone" ? "ElevenLabs phone call" : call.engine === "elevenlabs" ? "ElevenLabs + Claude (in app)" : call.engine === "claude" ? "AI call (Claude)" : call.engine === "script" ? "Voice AI (scripted)" : "Voice AI";
+  const kind = call.provider === "exotel" ? "IVR phone call, Exotel" : call.provider === "ivr_phone" ? (ui.exotel?.live ? "IVR phone call, Exotel" : "IVR phone call, simulated") : call.provider === "phone_sim" ? "phone call, simulated" : call.type === "ivr" ? "IVR" : call.provider === "elevenlabs_phone" ? "ElevenLabs phone call" : call.engine === "elevenlabs" ? "ElevenLabs + Claude (in app)" : call.engine === "claude" ? "AI call (Claude)" : call.engine === "script" ? "Voice AI (scripted)" : "Voice AI";
   const meta = [call.durationSecs != null ? `${call.durationSecs} s` : "", call.costUsd != null ? `$${Number(call.costUsd).toFixed(3)}` : ""].filter(Boolean).join(", ");
   const tone = { yes: "ok", no: "red", unsure: "amber" }[call.coming];
   const badge = call.status === "done" && tone ? `<span class="badge ${tone}">${{ yes: "Coming", no: "Not coming", unsure: "Unsure" }[call.coming]}</span> ` : "";
-  return `📞 ${badge}${esc(callResultText(call))} <span class="muted">(${kind}${call.lang === "ta" ? ", Tamil" : ""}, ${call.trigger}, ${tms(call.startedAt)}${meta ? `, ${meta}` : ""})</span>${call.summary ? `<br><span class="muted">AI summary:</span> ${esc(call.summary)}` : ""}${call.note ? `<br>📝 For the doctor: “${esc(call.note)}”` : ""}`;
+  return `📞 ${badge}${esc(callResultText(call, { withMode: false }))} <span class="muted">(${callChannel(call) === "app" ? "in app · " : ""}${kind}${call.lang === "ta" ? ", Tamil" : ""}, ${call.trigger === "auto" ? "automatic" : call.trigger}, ${tms(call.startedAt)}${meta ? `, ${meta}` : ""})</span>${call.summary ? `<br><span class="muted">AI summary:</span> ${esc(call.summary)}` : ""}${call.note ? `<br>📝 For the doctor: “${esc(call.note)}”` : ""}`;
 }
 
 function rowActions(s, a) {
@@ -112,9 +118,14 @@ function rowActions(s, a) {
   if (a.payment.refund?.status === "counter") acts.push(btn("refund-done", `Mark ${rupees(a.payment.refund.amount)} refunded`));
   if (notArrived(a)) acts.push(btn("doctor-cancel", "Doctor cancels", "danger"));
   const ringing = a.calls.at(-1)?.status === "ringing";
-  if (ringing && s.me !== a.patientId && a.calls.at(-1).provider !== "elevenlabs_phone") {
+  // Simulated answers: in-app calls for patients not open in the patient app,
+  // and simulated phone calls (they ring a phone, not the app).
+  if (ringing && a.calls.at(-1).provider !== "elevenlabs_phone" && (s.me !== a.patientId || a.calls.at(-1).provider === "phone_sim")) {
     acts.push(`<span class="muted" style="font-size:11px;align-self:center">Simulate their answer:</span>`);
-    acts.push(btn("sim-20", "“20 min, by auto”"), btn("sim-here", "“At the clinic”"), btn("sim-no", "“Can't come”"), btn("sim-noanswer", "No answer"));
+    if (a.calls.at(-1).provider === "ivr_phone") {
+      acts.push(`<span class="muted" style="font-size:11px;align-self:center">Their keypress:</span>`);
+      acts.push(btn("ivr-10", "1→1 under 10 min"), btn("ivr-20", "1→2 10–20 min"), btn("ivr-40", "1→3 20–40 min"), btn("ivr-60", "1→4 40+ min"), btn("sim-here", "2 At the clinic"), btn("ivr-cancel", "3 Cancel"), btn("sim-noanswer", "No answer"));
+    } else acts.push(btn("sim-20", "“20 min away”"), btn("sim-here", "“At the clinic”"), btn("sim-no", "“Can't come”"), btn("sim-noanswer", "No answer"));
   }
   return acts.join("");
 }
@@ -132,8 +143,8 @@ function qrow(s, a, group) {
   }
   if (notArrived(a) && a.date === today(s)) info.push(arrivalLine(s, a));
   if (notArrived(a)) {
-    if (a.trip) info.push(`🧳 Set off ${tms(a.trip.startedAt)} by ${esc(TRAVEL_MODES[a.trip.mode].toLowerCase())}, planned arrival ${tms(a.trip.etaMs)}`);
-    info.push(locationLine(s, a));
+    if (a.trip) info.push(`🧳 Set off ${tms(a.trip.startedAt)}`);
+    info.push(etaShareLine(s, a));
     const cl = callLine(a);
     if (cl) info.push(cl);
     if (a.lateNote) info.push(`🕑 Patient says about ${a.lateNote.minutes} min late (told ${tms(a.lateNote.at)})`);
@@ -154,7 +165,7 @@ function qrow(s, a, group) {
       ${open ? `<details open><summary>Payment</summary>${a.payment.history.map(h => `<div class="line">${tms(h.at)} · ${esc(h.text)}</div>`).join("") || `<div class="line">No payment activity.</div>`}
         ${a.payment.linkUrl ? `<div class="line">Link: <a href="${esc(a.payment.linkUrl)}" target="_blank" rel="noopener">${esc(a.payment.linkUrl)}</a></div>` : ""}
         ${a.payment.orderId ? `<div class="line mono">order ${esc(a.payment.orderId)} ${a.payment.paymentId ? `· ${esc(a.payment.paymentId)}` : ""}</div>` : ""}</details>
-        ${a.calls.length ? `<details open><summary>Calls</summary>${a.calls.map(c => `<div class="line">${tms(c.startedAt)} · ${esc(callResultText(c))}</div>${(c.transcript ?? []).map(m => `<div class="line">&nbsp;&nbsp;${m.who === "bot" ? "🤖" : "🗣"} ${esc(m.text)}</div>`).join("")}`).join("")}</details>` : ""}` : ""}
+        ${a.calls.length ? `<details open><summary>Calls</summary>${a.calls.map(c => `<div class="line">${tms(c.startedAt)} · ${esc(callResultText(c, { withMode: false }))}</div>${(c.transcript ?? []).map(m => `<div class="line">&nbsp;&nbsp;${m.who === "bot" ? "🤖" : "🗣"} ${esc(m.text)}</div>`).join("")}`).join("")}</details>` : ""}` : ""}
     </div>
   </div>`;
 }
@@ -192,7 +203,7 @@ function upNext(s, doctor) {
   const chip = c => {
     if (c.here) return `<span class="badge ok">Here · token ${c.a.token}</span>`;
     if (c.unknown) return `<span class="badge red">Not heard from</span>`;
-    const src = { location: "📍 Live location", trip: "🧳 Trip", call: "📞 Call", patient: "🕑 Said late", slot: "Booked", grace: "Held" }[c.arrival.source];
+    const src = { location: "⏱ Live ETA", trip: "🧳 Trip", call: "📞 Call", patient: "🕑 Said late", slot: "Booked", grace: "Held" }[c.arrival.source];
     return `<span class="badge ${c.arrival.firm ? "amber" : ""}">${src} · arrives ${tms(c.arrival.etaMs)}</span>`;
   };
   return `<div class="upnext">
@@ -291,7 +302,7 @@ function viewHistory(s) {
 function viewSettings(s) {
   const st = s.settings;
   const sel = (key, opts) => `<select data-setting="${key}">${opts.map(([v, l]) => `<option value="${v}" ${String(st[key]) === String(v) ? "selected" : ""}>${l}</option>`).join("")}</select>`;
-  const num = (key, min, max) => `<input type="number" data-setting="${key}" value="${st[key]}" min="${min}" max="${max}" />`;
+  const num = (key, min, max) => `<input type="number" data-setting="${key}" value="${st[key] ?? 1}" min="${min}" max="${max}" />`;
   return `<div class="toolbar"><h1>Settings</h1></div>
     <div class="form">
       <h2>Payment</h2>
@@ -322,41 +333,22 @@ function viewSettings(s) {
       <h2>Grace and late patients</h2>
       <div class="two">
         <div class="field"><label>Grace period (min)</label>${num("graceMin", 0, 30)}</div>
-        <div class="field"><label>No-show cutoff, location on but never left (min after slot)</label>${num("noShowCutoffMin", 10, 120)}</div>
+        <div class="field"><label>No-show cutoff, ETA sharing on but never left (min after slot)</label>${num("noShowCutoffMin", 10, 120)}</div>
       </div>
       <h2>Arrival calls</h2>
       <div class="two">
-        <div class="field"><label>Call type (open decision)</label>${sel("callType", [["voice", "Voice AI"], ["ivr", "IVR (keypress)"]])}</div>
-        <div class="field"><label>Voice AI engine</label>${sel("callEngine", [["script", "Scripted simulation"], ["claude", "Claude + browser speech (in the patient app)"], ["elevenlabs", "ElevenLabs voice + Claude"]])}
-          <div class="hint">${engineHint(s)}</div></div>
-        ${st.callEngine === "elevenlabs" ? `<div class="field"><label>ElevenLabs call goes to</label>${sel("elevenDelivery", [["app", "The patient app (talk in the browser, no phone line)"], ["phone", "A real phone call"]])}
-          <div class="hint">${st.elevenDelivery === "phone" ? phoneHint() : "Uses the microphone in the patient app. Needs ELEVENLABS_API_KEY and ELEVENLABS_AGENT_ID."}</div></div>
-        ${st.elevenDelivery === "phone" ? `<div class="field"><label>Demo: send real calls to</label><input data-setting="testPhone" value="${esc(st.testPhone ?? "")}" placeholder="+91 98xxxxxxxx" />
-          <div class="hint">Demo patients have made-up numbers, so real calls go here. It must be in ELEVENLABS_ALLOWED_TO on the server.</div></div>` : ""}
-        <div class="field"><label>ElevenLabs agent</label><button class="btn outline sm" data-action="eleven-setup" ${ui.eleven?.live ? "" : "disabled"}>${ui.eleven?.agent ? "Update agent from the current script" : "Create the agent"}</button>
-          <div class="hint">${ui.elevenSetup ? esc(ui.elevenSetup) : `Agent LLM: ${esc(ui.eleven?.llm ?? "claude-opus-5-5")} (ELEVENLABS_LLM). Same script as the Claude call.`}</div></div>` : ""}
+        <div class="field"><label>Call type</label><div><b>IVR phone call</b> (keypad menu, no AI)</div>
+          <div class="hint">Rings the patient's phone: 1 on the way (then how far: 1 under 10 min, 2 10–20, 3 20–40, 4 over 40), 2 at the clinic, 3 cancel.</div></div>
+        <div class="field"><label>Phone line</label><div><b>${ui.exotel?.live ? "Exotel: real calls" : "Simulated"}</b></div>
+          <div class="hint">${ui.exotel?.live ? `Calls go only to numbers in EXOTEL_ALLOWED_TO (${esc((ui.exotel.allowedTo ?? []).join(", "))}).${ui.exotel.statusCallback ? "" : " EXOTEL_PUBLIC_URL isn't set, so unanswered calls are only marked after 4 minutes."} Patients must have agreed to calls (TRAI).` : `Exotel not set up (${esc(ui.exotel?.reason ?? "checking…")}). Enter the keypress from the patient's row.`}</div></div>
+        ${ui.exotel?.live ? `<div class="field"><label>Demo: send real calls to</label><input data-setting="testPhone" value="${esc(s.settings.testPhone ?? "")}" placeholder="+91 98xxxxxxxx" />
+          <div class="hint">Demo patients have made-up numbers, so real calls go here. It must be in EXOTEL_ALLOWED_TO.</div></div>` : ""}
         <div class="field"><label>Language</label>${sel("callLanguage", [["en", "English"], ["ta", "Tamil"]])}</div>
         <div class="field"><label>Call if not arrived, minutes before slot (open decision)</label>${num("callBeforeMin", 0, 60)}</div>
       </div>
       <h2>Clinic</h2>
       <div class="field"><label>Note shown on confirmation</label><input data-setting="clinic.note" value="${esc(s.clinic.note)}" /></div>
     </div>`;
-}
-
-function engineHint(s) {
-  const e = s.settings.callEngine === "auto" ? "claude" : s.settings.callEngine;
-  if (e === "script") return "Fixed questions, no AI. Always available.";
-  if (e === "claude") return ui.ai?.live ? `Claude (${esc(ui.ai.model)}) runs the conversation; the patient app speaks it with the browser's voice.` : `No ANTHROPIC_API_KEY on the server, so calls fall back to the script.`;
-  const el = ui.eleven;
-  if (!el) return "Checking ElevenLabs…";
-  if (!el.live || !el.agent) return `Not ready: ${esc(el.reason)}. Calls fall back to Claude or the script.`;
-  return `ElevenLabs does the voice, hearing and turn-taking; Claude (${esc(el.llm)}) decides what to say.`;
-}
-
-function phoneHint() {
-  const el = ui.eleven ?? {};
-  if (!el.phone) return "No ELEVENLABS_PHONE_NUMBER_ID on the server yet, so calls can't be placed.";
-  return `Dials through ${el.phoneProvider === "twilio" ? "Twilio (it can only call Indian mobiles from a non-Indian number)" : "your SIP trunk (e.g. Plivo or Exotel)"}. Only to numbers in ELEVENLABS_ALLOWED_TO${el.allowedTo?.length ? ` (${el.allowedTo.join(", ")})` : " (none set)"}. Patients must have agreed to calls (TRAI).`;
 }
 
 // ---------- real phone calls (ElevenLabs) ----------
@@ -370,6 +362,16 @@ async function dispatchPhoneCalls() {
   const s = getState();
   for (const a of s.appointments) {
     const call = a.calls.at(-1);
+    // IVR arrival calls: a real Exotel call when the server is set up,
+    // otherwise they stay simulated (reception enters the keypress).
+    if (call?.provider === "ivr_phone" && ui.exotel?.live && call.status === "ringing" && !call.dispatchedAt && !placing.has(call.id)) {
+      placeExotelCall(a.id, call.id);
+      continue;
+    }
+    if (call?.provider === "exotel" && call.status === "in_progress" && call.exotelSid && !placing.has(call.id)) {
+      pollExotelCall(a.id, call.id, call.exotelSid);
+      continue;
+    }
     if (call?.provider !== "elevenlabs_phone" || placing.has(call.id)) continue;
     if (call.status === "ringing" && !call.dispatchedAt) placeCall(a.id, call.id);
     else if (call.status === "in_progress" && call.conversationId) pollCall(a.id, call.id, call.conversationId);
@@ -402,6 +404,73 @@ async function placeCall(apptId, callId) {
     update(st => finishCall(st, findAppt(st, apptId), { outcome: "no_answer", engine: "elevenlabs", summary: `Call not placed: ${err.message}` }));
     toast("Call not placed", err.message);
   }
+  placing.delete(callId);
+}
+
+// ---------- real IVR calls (Exotel) ----------
+
+function ivrGreeting(s, a, lang) {
+  const first = patientOf(s, a).name.split(" ")[0];
+  const doctor = doctorOf(s, a).name;
+  return lang === "ta"
+    ? `வணக்கம் ${first}, ${s.clinic.name} சார்பாக, ${doctor} உடனான இன்றைய ${slotLabel(s, a)} சந்திப்பு பற்றி அழைக்கிறோம்.`
+    : `Hello ${first}. This is ${s.clinic.name}, about your ${slotLabel(s, a)} appointment with ${doctor} today.`;
+}
+
+async function placeExotelCall(apptId, callId) {
+  placing.add(callId);
+  const claimed = update(st => {
+    const c = findAppt(st, apptId).calls.find(x => x.id === callId);
+    if (c.dispatchedAt) return false;
+    c.dispatchedAt = Date.now();
+    return true;
+  });
+  if (!claimed) return placing.delete(callId);
+  const s = getState();
+  const a = findAppt(s, apptId);
+  const call = a.calls.find(x => x.id === callId);
+  try {
+    const res = await fetch("/api/exotel/call", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ to: s.settings.testPhone || patientOf(s, a).phone, apptId, greeting: ivrGreeting(s, a, call.lang) })
+    });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error ?? `Call failed (${res.status})`);
+    update(st => Object.assign(findAppt(st, apptId).calls.find(x => x.id === callId), { status: "in_progress", provider: "exotel", exotelSid: d.sid, realStartedAt: Date.now() }));
+    toast(`Calling ${patientOf(s, a).name}`, "Real IVR call through Exotel.");
+  } catch (err) {
+    update(st => finishCall(st, findAppt(st, apptId), { outcome: "no_answer", engine: "ivr", summary: `Call not placed: ${err.message}` }));
+    toast("Call not placed", err.message);
+  }
+  placing.delete(callId);
+}
+
+// Exotel's keypress -> the app's call result.
+const EXOTEL_ANSWERS = {
+  eta10: { outcome: "eta", etaMin: 10 },
+  eta20: { outcome: "eta", etaMin: 20 },
+  eta40: { outcome: "eta", etaMin: 40 },
+  eta60: { outcome: "eta", etaMin: 60 },
+  here: { outcome: "at_clinic" },
+  cancel: { outcome: "cancelled" }
+};
+const EXOTEL_GIVE_UP_MS = 4 * 60 * 1000; // no keypress and no end-of-call report: treat as no answer
+
+async function pollExotelCall(apptId, callId, sid) {
+  placing.add(callId);
+  try {
+    const res = await fetch(`/api/exotel/result?sid=${encodeURIComponent(sid)}`);
+    const d = await res.json();
+    const call = findAppt(getState(), apptId)?.calls.find(x => x.id === callId);
+    const finish = result => update(st => {
+      const a = findAppt(st, apptId);
+      if (a.calls.at(-1)?.id === callId) finishCall(st, a, { engine: "ivr", durationSecs: d.durationSecs ?? null, ...result });
+    });
+    if (res.ok && d.answer) finish(EXOTEL_ANSWERS[d.answer] ?? { outcome: "unsure" });
+    else if (res.ok && d.done) finish(d.status === "completed" ? { outcome: "unsure", summary: "Answered but didn't press a key." } : { outcome: "no_answer", summary: `Exotel: ${d.status}` });
+    else if (call && Date.now() - (call.realStartedAt ?? call.dispatchedAt) > EXOTEL_GIVE_UP_MS) finish({ outcome: "no_answer", summary: "No result from Exotel within 4 minutes." });
+  } catch {}
   placing.delete(callId);
 }
 
@@ -652,9 +721,15 @@ document.addEventListener("click", async event => {
     case "reinsert2": act(st => reinsert(st, findAppt(st, id), 2)); break;
     case "swap": act(st => swapWithNext(st, findAppt(st, id))); break;
     case "call": act(st => startCall(st, findAppt(st, id), "manual")); toast("Calling the patient", "The result shows on their row."); break;
-    case "sim-20": act(st => finishCall(st, findAppt(st, id), { outcome: "eta", etaMin: 20, mode: "auto", summary: "Coming by auto, about 20 min." })); break;
+    case "sim-20": act(st => finishCall(st, findAppt(st, id), { outcome: "eta", etaMin: 20, mode: "auto", summary: "Coming, about 20 min away." })); break;
     case "sim-no": act(st => finishCall(st, findAppt(st, id), { outcome: "unsure", coming: "no", summary: "Says they can't make it; didn't want to cancel on the call." })); break;
     case "sim-here": act(st => finishCall(st, findAppt(st, id), { outcome: "at_clinic" })); break;
+    case "ivr-10": case "ivr-20": case "ivr-40": case "ivr-60": {
+      const etaMin = Number(action.slice(4));
+      act(st => finishCall(st, findAppt(st, id), { outcome: "eta", etaMin, engine: "ivr" }));
+      break;
+    }
+    case "ivr-cancel": act(st => finishCall(st, findAppt(st, id), { outcome: "cancelled", engine: "ivr" })); break;
     case "sim-noanswer": act(st => finishCall(st, findAppt(st, id), { outcome: "no_answer" })); break;
     case "eleven-setup": {
       ui.elevenSetup = "Working…";
@@ -740,6 +815,10 @@ document.addEventListener("change", event => {
 });
 
 subscribe(render);
+fetch("/api/exotel/config").then(r => r.json()).catch(() => ({ live: false, reason: "Exotel server not reachable" })).then(cfg => {
+  ui.exotel = cfg;
+  render();
+});
 fetch("/api/elevenlabs/config").then(r => r.json()).catch(() => ({ live: false, reason: "ElevenLabs server not reachable" })).then(cfg => {
   ui.eleven = cfg;
   render();

@@ -13,10 +13,13 @@
 # in the site's environment; without them the app uses its simulated gateway)
 # appointment-flow's AI arrival call (needs ANTHROPIC_API_KEY; without it the
 # patient app plays a scripted call), appointment-flow's Google Maps routes
-# (needs GOOGLE_MAPS_API_KEY with the Routes API; without it the trip planner
-# estimates), and surepass-prototype's verification
-# proxy (needs SUREPASS_API_KEY). Function dependencies (@anthropic-ai/sdk)
-# come from the root package.json.
+# (needs GOOGLE_SERVICE_ACCOUNT_JSON, the Maps Provision dev service account's
+# key, for OAuth to the Routes API; without it the trip planner estimates),
+# appointment-flow's IVR arrival calls on Exotel (needs the EXOTEL_* variables,
+# see netlify/functions/exotel.mjs; without them calls are simulated), and
+# surepass-prototype's verification proxy (needs SUREPASS_API_KEY). Function
+# dependencies (@anthropic-ai/sdk, google-auth-library, @netlify/blobs) come
+# from the root package.json.
 [functions]
   directory = "netlify/functions"
 

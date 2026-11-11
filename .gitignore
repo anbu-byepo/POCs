@@ -4,3 +4,6 @@ node_modules/
 youtube-feasibility/results.html
 .DS_Store
 .env
+# Google service account keys
+*service-account*.json
+*-sa-key*.json

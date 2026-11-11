@@ -3,6 +3,8 @@
   "private": true,
   "description": "Dependencies for the Netlify functions in netlify/functions (bundled by Netlify from the repo root).",
   "dependencies": {
-    "@anthropic-ai/sdk": "^1.6.0"
+    "@anthropic-ai/sdk": "^1.6.0",
+    "@netlify/blobs": "^11.1.9",
+    "google-auth-library": "^11.3.4"
   }
 }

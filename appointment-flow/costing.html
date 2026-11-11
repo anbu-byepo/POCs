@@ -49,8 +49,8 @@
     <div class="wrap">
       <header>
         <h1>What the appointment flow costs to run</h1>
-        <p>Every paid service behind the patient and clinic apps: what's free, what you pay after that, and the total for your volume. Change the numbers below and everything updates. Prices are as published on <b>8 Nov 2026</b> (sources at the bottom) and change often, so check them before you sign anything.</p>
-        <div class="links"><a class="btn outline sm" href="./">Back to the demo</a><a class="btn ghost sm" href="#services">Service by service</a><a class="btn ghost sm" href="#engines">IVR vs AI calls</a><a class="btn ghost sm" href="#sources">Sources</a></div>
+        <p>Every paid service behind the patient and clinic apps: what's free, what you pay after that, and the total for your volume. Change the numbers below and everything updates. Prices are as published on <b>8–10 Nov 2026</b> (sources at the bottom) and change often, so check them before you sign anything.</p>
+        <div class="links"><a class="btn outline sm" href="./">Back to the demo</a><a class="btn ghost sm" href="#services">Service by service</a><a class="btn ghost sm" href="#engines">IVR vs AI calls</a><a class="btn ghost sm" href="#lines">Phone lines</a><a class="btn ghost sm" href="#sources">Sources</a></div>
       </header>
 
       <section class="panel" aria-labelledby="h-inputs">
@@ -66,10 +66,17 @@
       </section>
 
       <section class="panel" id="engines" aria-labelledby="h-engines">
-        <h2 id="h-engines">Arrival calls: IVR vs Claude vs ElevenLabs</h2>
-        <p>The same calls at your volume, on each engine. "Per call" is one call of the average length you set (the IVR uses its own, shorter length). Claude is the brain in every AI option. ElevenLabs adds the voice, the hearing and the phone line. The IVR has no AI: a keypad menu over the phone line.</p>
+        <h2 id="h-engines">Arrival calls: IVR vs Claude / Gemini vs ElevenLabs vs Gemini Live</h2>
+        <p>The same calls at your volume, on each engine. "Per call" is one call of the average length you set (the IVR uses its own, shorter length). In the text-model options, the AI model you pick (Claude or Gemini) is the brain. ElevenLabs adds the voice, the hearing and places the call. Gemini Live hears, thinks and speaks in one model, so it needs no ElevenLabs, but real calls need your own small server to carry the call audio between the phone line and Gemini. The IVR has no AI: a keypad menu over the phone line.</p>
         <div class="scroll"><table class="t" id="enginecmp"></table></div>
         <div class="scroll"><table class="t" id="percall"></table></div>
+      </section>
+
+      <section class="panel" id="lines" aria-labelledby="h-lines">
+        <h2 id="h-lines">Real phone calls: by phone line</h2>
+        <p>Each real-call engine on each Indian phone line, at your volume. Exotel and Plivo both stream live call audio to a server (Exotel's Voicebot applet, Plivo Audio Streams), which is what Gemini Live needs; ElevenLabs connects to them over SIP. Exotel's per-minute rate isn't published, so its figures are an estimate until you have a quote.</p>
+        <div class="scroll"><table class="t" id="linecmp"></table></div>
+        <div class="note">Exotel's monthly figures leave out its plan or bundle fee and number rental, which Exotel quotes (bundles from ₹9,999), so it looks cheaper per month than it is. Plivo's include ₹200/month per number; Twilio's $1.15. Gemini Live rows include the call server.</div>
       </section>
 
       <section class="panel" id="services" aria-labelledby="h-services">
@@ -83,11 +90,14 @@
           <li>Google Maps, India pricing: <a href="https://developers.google.com/maps/billing-and-pricing/pricing-india" target="_blank" rel="noopener">pricing-india</a>, SKU triggers: <a href="https://developers.google.com/maps/billing-and-pricing/sku-details/routes" target="_blank" rel="noopener">sku-details/routes</a></li>
           <li>ElevenLabs Agents: <a href="https://elevenlabs.io/pricing/agents" target="_blank" rel="noopener">pricing/agents</a>, LLM billing: <a href="https://elevenlabs.io/docs/eleven-agents/customization/llm" target="_blank" rel="noopener">docs/llm</a>, Tamil: <a href="https://elevenlabs.io/docs/capabilities/text-to-speech" target="_blank" rel="noopener">text-to-speech</a> and <a href="https://elevenlabs.io/docs/capabilities/speech-to-text" target="_blank" rel="noopener">speech-to-text</a></li>
           <li>Claude API: <a href="https://platform.claude.com/docs/en/about-claude/pricing" target="_blank" rel="noopener">platform.claude.com pricing</a></li>
+          <li>Gemini API and Gemini Live: <a href="https://aistudio.google.com/docs/pricing" target="_blank" rel="noopener">Gemini API pricing</a> (10 Nov 2026), <a href="https://blog.google/innovation-and-ai/technology/developers-tools/build-real-time-voice-applications-gemini-audio/" target="_blank" rel="noopener">Gemini 3.8 Live announcement</a></li>
+          <li>Exotel call streaming: <a href="https://developer.exotel.com/docs/agentstream/stream-voicebot-applet" target="_blank" rel="noopener">Stream and Voicebot applet</a>, <a href="https://developer.exotel.com/docs/agentstream/websocket-protocol" target="_blank" rel="noopener">AgentStream WebSocket protocol</a></li>
           <li>Phone lines: <a href="https://www.plivo.com/voice/pricing/in/" target="_blank" rel="noopener">Plivo India</a>, <a href="https://www.twilio.com/en-us/voice/pricing/in" target="_blank" rel="noopener">Twilio India</a> and <a href="https://www.twilio.com/en-us/guidelines/in/voice" target="_blank" rel="noopener">its India rules</a>, <a href="https://developer.exotel.com/docs/faqs/pricing-plans" target="_blank" rel="noopener">Exotel</a> (no published per-minute rate; the figure used is a third-party estimate)</li>
           <li>Razorpay: <a href="https://razorpay.com/pricing/" target="_blank" rel="noopener">razorpay.com/pricing</a></li>
           <li>IVR prompts: <a href="https://twilio.com/en-us/changelog/new-text-to-speech-voices-for-say-update-03-2025" target="_blank" rel="noopener">Twilio text-to-speech rates</a>, <a href="https://devplivo.plivo.com/voice/pricing" target="_blank" rel="noopener">Plivo pricing mirror</a>, <a href="https://bonvoice.com/insights/ivr-pricing-in-india/" target="_blank" rel="noopener">India IVR rate range (vendor guide)</a></li>
           <li>Hosting (servers for the apps and API endpoints) isn't included here.</li>
-          <li>Claude tokens per call are our estimate for this script: about 5 turns, ~1,400 input and ~250 output tokens per turn (low effort), so ~7,000 in and ~1,250 out per one-minute call. Real calls vary; ElevenLabs reports each call's actual cost, and the clinic row shows it.</li>
+          <li>Gemini Live per call = call length × $0.005 (audio in) + the share the AI speaks × $0.018 (audio out). The call server is a rough monthly estimate you can change.</li>
+          <li>AI model tokens per call (Claude or Gemini) are our estimate for this script: about 5 turns, ~1,400 input and ~250 output tokens per turn (low effort), so ~7,000 in and ~1,250 out per one-minute call. Real calls vary; ElevenLabs reports each call's actual cost, and the clinic row shows it.</li>
           <li>Rupee figures use the exchange rate you set above. All prices exclude GST unless stated; add 18% GST where your provider charges it.</li>
         </ul>
       </section>
@@ -101,21 +111,30 @@
           pro: { price: 3.0, free: 35000 },
           enterprise: { price: 4.5, free: 7000 }
         },
-        claude: { // per million tokens
+        // Text models for the call's "brain", per million tokens. Gemini 3.8
+        // Flash is at its intro price until 31 Dec 2026, then doubles (the
+        // "Gemini 3.8 Flash price" input switches it).
+        llm: {
           opus: { label: "Claude Opus 5.5", in: 4, out: 20 },
           sonnet: { label: "Claude Sonnet 5.5", in: 2, out: 10 },
-          haiku: { label: "Claude Haiku 5.5", in: 0.1, out: 0.5 }
+          haiku: { label: "Claude Haiku 5.5", in: 0.1, out: 0.5 },
+          gpro: { label: "Gemini 3.1 Pro", in: 2, out: 12, gemini: true },
+          gflash: { label: "Gemini 3.8 Flash", in: 0.75, out: 3.75, in2027: 1.5, out2027: 7.5, gemini: true },
+          glite: { label: "Gemini 3.5 Flash-Lite", in: 0.3, out: 2.5, gemini: true }
         },
+        // Gemini Live (3.8 Live / 3.1 Flash Live): native audio in and out, Google's per-minute rates.
+        // Input is billed for every minute of call audio sent; output for the minutes the AI speaks.
+        geminiLive: { inPerMin: 0.005, outPerMin: 0.018 },
         tokensPerMin: { in: 7000, out: 1250 }, // estimate for this call script
         eleven: {
           perMin: 0.08,
-          llmMarkup: 1.1, // some Claude models billed at Vertex regional rates, ~10% above base
+          llmMarkup: 1.1, // some Claude models billed at Vertex regional rates, ~10% above base (Gemini assumed at Google's rate)
           plans: [["Free", 0, 15, 4], ["Starter", 6, 75, 6], ["Creator", 22, 275, 10], ["Pro", 99, 1238, 20], ["Scale", 299, 3738, 30], ["Business", 990, 12375, 40]]
         },
         // ttsPer100Chars: what the carrier charges for spoken IVR prompts (USD).
         phone: {
           plivo: { label: "Plivo SIP (₹0.38/min, 30-s pulses)", inrPerMin: 0.38, pulseSec: 30, inrNumber: 200, ttsPer100Chars: 0 },
-          exotel: { label: "Exotel (≈₹0.80/min, estimate)", inrPerMin: 0.8, pulseSec: 60, inrNumber: 0, ttsPer100Chars: 0 },
+          exotel: { label: "Exotel (≈₹0.80/min, estimate)", inrPerMin: 0.8, pulseSec: 60, inrNumber: 0, ttsPer100Chars: 0 }, // plan / bundle fee not included: quoted by Exotel
           twilio: { label: "Twilio ($0.0496/min, intl number)", usdPerMin: 0.0496, pulseSec: 60, usdNumber: 1.15, ttsPer100Chars: 0.0008 }
         },
         // IVR prompts per call: menu + "how far" + goodbye, ~550 characters
@@ -133,10 +152,13 @@
         ["callPct", "Patients who get an arrival call (%)", 35, "number", { min: 0, max: 100, hint: "Not here 15 min before the slot and not sharing location." }],
         ["followPct", "Calls that need a follow-up (%)", 10, "number", { min: 0, max: 100 }],
         ["callMin", "Average call length (minutes)", 1, "number", { min: 0.25, step: 0.25 }],
-        ["engine", "Arrival call engine", "eleven_phone", "select", { options: [["script", "Scripted (no AI, in app)"], ["claude", "Claude + browser speech (in app)"], ["eleven_app", "ElevenLabs + Claude (in app)"], ["ivr_phone", "IVR keypad menu (real phone call, no AI)"], ["eleven_phone", "ElevenLabs + Claude (real phone call)"]] }],
+        ["engine", "Arrival call engine", "eleven_phone", "select", { options: [["script", "Scripted (no AI, in app)"], ["claude", "AI model + browser speech (in app)"], ["eleven_app", "ElevenLabs + AI model (in app)"], ["glive_app", "Gemini Live (in app)"], ["ivr_phone", "IVR keypad menu (real phone call, no AI)"], ["eleven_phone", "ElevenLabs + AI model (real phone call)"], ["glive_phone", "Gemini Live + phone line (real phone call)"]] }],
         ["ivrSec", "IVR call length (seconds)", 45, "number", { min: 10, step: 5, hint: "Menu, one keypress for distance, goodbye. Usually 30–60 s." }],
         ["ivrAudio", "IVR prompts", "recorded", "select", { options: [["recorded", "Recorded once (English + Tamil)"], ["tts", "Text-to-speech every call"]] }],
-        ["model", "Claude model for calls", "opus", "select", { options: Object.entries(P.claude).map(([k, m]) => [k, m.label]) }],
+        ["model", "AI model for calls (Claude or Gemini)", "opus", "select", { options: Object.entries(P.llm).map(([k, m]) => [k, m.label]), hint: "The brain for the browser-speech and ElevenLabs engines. Gemini Live is its own model." }],
+        ["gflashPrice", "Gemini 3.8 Flash price", "intro", "select", { options: [["intro", "Intro: $0.75 / $3.75 (to 31 Dec 2026)"], ["2027", "From 1 Jan 2027: $1.50 / $7.50"]] }],
+        ["liveTalkPct", "Gemini Live: share of the call the AI speaks (%)", 50, "number", { min: 0, max: 100, hint: "Output audio is billed only while it speaks. 100% = worst case." }],
+        ["bridgeUsd", "Gemini Live call server (USD/month)", 5, "number", { min: 0, step: 1, hint: "Carries the call audio between the phone line and Gemini (e.g. Cloud Run, Mumbai). Rough estimate." }],
         ["phone", "Phone line (real calls)", "plivo", "select", { options: Object.entries(P.phone).map(([k, m]) => [k, m.label]) }],
         ["routes", "Trip planner routes", "all", "select", { options: [["all", "All modes (with two-wheeler and tolls)"], ["notolls", "All modes, no toll prices"], ["lean", "No two-wheeler, no tolls"], ["none", "Estimates only (no Google)"]] }],
         ["prepaidPct", "Bookings paid online (%)", 50, "number", { min: 0, max: 100 }],
@@ -184,9 +206,19 @@
         return { reqs: ess + drivePro + ent, cost, lines, freePlans: binding };
       }
 
+      function llmRates(model) {
+        const m = P.llm[model] ?? P.llm.opus;
+        return m.in2027 && v.gflashPrice === "2027" ? { ...m, in: m.in2027, out: m.out2027 } : m;
+      }
+
+      // markup applies to Claude only (ElevenLabs bills some Claude models at regional rates).
       function claudePerCall(model, markup = 1) {
-        const m = P.claude[model];
-        return ((P.tokensPerMin.in * v.callMin * m.in + P.tokensPerMin.out * v.callMin * m.out) / 1e6) * markup;
+        const m = llmRates(model);
+        return ((P.tokensPerMin.in * v.callMin * m.in + P.tokensPerMin.out * v.callMin * m.out) / 1e6) * (m.gemini ? 1 : markup);
+      }
+
+      function geminiLivePerCall() {
+        return v.callMin * (P.geminiLive.inPerMin + (v.liveTalkPct / 100) * P.geminiLive.outPerMin);
       }
 
       function bestElevenPlan(minutes) {
@@ -199,8 +231,8 @@
         return best;
       }
 
-      function phoneCost(calls) {
-        const p = P.phone[v.phone];
+      function phoneCost(calls, key = v.phone) {
+        const p = P.phone[key];
         const billedMin = Math.ceil((v.callMin * 60) / p.pulseSec) * (p.pulseSec / 60);
         const perCallUsd = p.inrPerMin != null ? (billedMin * p.inrPerMin) / v.fx : billedMin * p.usdPerMin;
         const numberUsd = p.inrNumber != null ? p.inrNumber / v.fx : p.usdNumber ?? 0;
@@ -209,8 +241,8 @@
 
       // A keypad IVR: just the phone line and the spoken prompts. No AI, no
       // ElevenLabs.
-      function ivrCost(calls) {
-        const p = P.phone[v.phone];
+      function ivrCost(calls, key = v.phone) {
+        const p = P.phone[key];
         const billedMin = Math.ceil(v.ivrSec / p.pulseSec) * (p.pulseSec / 60);
         const lineUsd = p.inrPerMin != null ? (billedMin * p.inrPerMin) / v.fx : billedMin * p.usdPerMin;
         const chars = v.ivrAudio === "recorded" ? P.ivr.ttsCharsRecorded : P.ivr.ttsChars;
@@ -219,27 +251,40 @@
         return { billedMin, lineUsd, ttsUsd, chars, numberUsd, perCall: lineUsd + ttsUsd, total: calls * (lineUsd + ttsUsd) + numberUsd };
       }
 
-      function engineCost(engine, calls, minutes) {
+      function engineCost(engine, calls, minutes, line = v.phone) {
+        const lineName = P.phone[line].label.split(" (")[0];
         if (engine === "script") return { total: 0, perCall: 0, parts: [] };
+        if (engine === "glive_app" || engine === "glive_phone") {
+          const per = geminiLivePerCall();
+          const parts = [[`Gemini Live audio (${num(minutes)} min in, ~${num(minutes * v.liveTalkPct / 100)} min spoken)`, calls * per]];
+          let perCall = per;
+          if (engine === "glive_phone") {
+            const ph = phoneCost(calls, line);
+            parts.push([`Phone line: ${lineName}`, ph.total], ["Call server (audio bridge)", v.bridgeUsd]);
+            perCall += ph.perCallUsd;
+          }
+          return { total: parts.reduce((t, [, c]) => t + c, 0), perCall, parts };
+        }
         if (engine === "ivr_phone") {
-          const c = ivrCost(calls);
-          const name = P.phone[v.phone].label.split(" (")[0];
+          const c = ivrCost(calls, line);
+          const name = lineName;
           return {
             total: c.total, perCall: c.perCall,
             parts: [[`Phone line: ${name} (${num(calls)} calls × ${c.billedMin} min billed)`, calls * c.lineUsd], [`Number rental (${v.clinics})`, c.numberUsd], [`Spoken prompts (~${c.chars} characters a call)`, calls * c.ttsUsd]]
           };
         }
+        const modelLabel = llmRates(v.model).label;
         if (engine === "claude") {
           const per = claudePerCall(v.model);
-          return { total: calls * per, perCall: per, parts: [["Claude tokens", calls * per]] };
+          return { total: calls * per, perCall: per, parts: [[`${modelLabel} tokens`, calls * per]] };
         }
         const plan = bestElevenPlan(minutes);
         const llmPer = claudePerCall(v.model, P.eleven.llmMarkup);
-        const parts = [[`ElevenLabs ${plan.name} plan (${num(plan.incl)} min incl.)`, plan.price], [`ElevenLabs extra minutes (${num(plan.over)} × $0.08)`, plan.over * P.eleven.perMin], ["Claude via ElevenLabs (+~10%)", calls * llmPer]];
+        const parts = [[`ElevenLabs ${plan.name} plan (${num(plan.incl)} min incl.)`, plan.price], [`ElevenLabs extra minutes (${num(plan.over)} × $0.08)`, plan.over * P.eleven.perMin], [`${modelLabel} via ElevenLabs${llmRates(v.model).gemini ? "" : " (+~10%)"}`, calls * llmPer]];
         let perCall = (plan.cost / Math.max(1, calls)) + llmPer;
         if (engine === "eleven_phone") {
-          const ph = phoneCost(calls);
-          parts.push([`Phone line: ${P.phone[v.phone].label.split(" (")[0]}`, ph.total]);
+          const ph = phoneCost(calls, line);
+          parts.push([`Phone line: ${lineName}`, ph.total]);
           perCall += ph.perCallUsd;
         }
         return { total: parts.reduce((t, [, c]) => t + c, 0), perCall, parts, plan };
@@ -259,7 +304,11 @@
         const rows = [
           ["Google Maps (trip planner)", `${num(plans)} plans · ${num(g.reqs)} route requests`, v.routes === "none" ? "Not used" : `About ${num(g.freePlans)} plans a month`, g.cost],
           [`Arrival calls: ${engineLabel}`, v.engine === "script" ? `${num(calls)} calls` : v.engine === "ivr_phone" ? `${num(calls)} calls · ${num(calls * v.ivrSec / 60)} min` : `${num(calls)} calls · ${num(minutes)} min`,
-            v.engine === "script" ? "Free" : v.engine === "claude" ? "Only Anthropic's small trial credit" : v.engine === "ivr_phone" ? "None (pay per minute)" : `${eng.plan.name} plan: ${num(eng.plan.incl)} min included`, eng.total]
+            v.engine === "script" ? "Free"
+              : v.engine === "claude" ? (llmRates(v.model).gemini ? "Gemini free tier: not for patient data (costed at paid rates)" : "Only Anthropic's small trial credit")
+              : v.engine === "ivr_phone" ? "None (pay per minute)"
+              : v.engine.startsWith("glive") ? "Gemini free tier: not for patient data (costed at paid rates)"
+              : `${eng.plan.name} plan: ${num(eng.plan.incl)} min included`, eng.total]
         ];
         const total = rows.reduce((t, r) => t + r[3], 0);
         const rzpUsd = rzpInr / v.fx;
@@ -267,7 +316,7 @@
         el("totals").innerHTML = [
           ["Per month (running cost)", inr(total), `${usd(total)} · excl. payment fees and hosting`],
           ["Per appointment", inrSmall(total / Math.max(1, appts)), `${num(appts)} appointments a month`],
-          ["Per arrival call", v.engine === "script" ? "₹0" : inrSmall(eng.perCall), `${num(calls)} calls a month${v.engine === "ivr_phone" ? " + number rental" : ""}`],
+          ["Per arrival call", v.engine === "script" ? "₹0" : inrSmall(eng.perCall), `${num(calls)} calls a month${v.engine === "ivr_phone" ? " + number rental" : v.engine === "glive_phone" ? " + number rental and call server" : ""}`],
           ["Razorpay fees", `₹${num(rzpInr)}`, `on ₹${num(prepaid * v.fee)} collected online`]
         ].map(([k, val, s]) => `<div class="total"><div class="k">${k}</div><div class="v">${val}</div><div class="s">${s}</div></div>`).join("");
 
@@ -283,6 +332,7 @@
           v.routes === "none" ? null : `Google covers about <b>${num(g.freePlans)}</b> trip plans a month free (you'd use ${num(plans)})`,
           v.engine.startsWith("eleven") ? `ElevenLabs' free plan has 15 call minutes; at ${num(minutes)} minutes the ${eng.plan.name} plan is cheapest` : null,
           v.engine === "ivr_phone" ? "An IVR has no AI cost at all: you pay only the phone minutes (and, on Twilio, the spoken prompts)" : null,
+          v.engine.startsWith("glive") || llmRates(v.model).gemini ? "Gemini has a free tier, but Google may use free-tier data to improve its products, so it isn't costed here for patient calls" : null,
           "Scripted calls and browser speech cost nothing"
         ].filter(Boolean);
         el("freeline").innerHTML = `<b>What's free:</b> ${freeBits.join(". ")}.`;
@@ -292,7 +342,7 @@
         el("enginecmp").innerHTML = `<thead><tr><th>Engine</th><th>Real phone call</th><th>Voice quality</th><th class="n">Per call</th><th class="n">Per month</th></tr></thead><tbody>
           ${engines.map(([k, l]) => {
             const e = engineCost(k, calls, minutes);
-            return `<tr class="${k === v.engine ? "on" : ""}"><td><b>${esc(l)}</b></td><td>${k.endsWith("_phone") ? "Yes" : "No, rings in the app"}</td><td>${{ script: "Fixed questions, browser voice", claude: "Smart, but robotic browser voice", eleven_app: "Natural voice, interruptions handled", ivr_phone: "Keypad menu: ETA in ranges, no notes for the doctor", eleven_phone: "Natural voice, on the patient's phone" }[k]}</td><td class="n">${e.perCall ? inrSmall(e.perCall) : "₹0"}</td><td class="n">${e.total ? inr(e.total) : "₹0"}</td></tr>`;
+            return `<tr class="${k === v.engine ? "on" : ""}"><td><b>${esc(l)}</b></td><td>${k.endsWith("_phone") ? "Yes" : "No, rings in the app"}</td><td>${{ script: "Fixed questions, browser voice", claude: "Smart, but robotic browser voice", eleven_app: "Natural voice, interruptions handled", ivr_phone: "Keypad menu: ETA in ranges, no notes for the doctor", eleven_phone: "Natural voice, on the patient's phone", glive_app: "Natural voice (Gemini native audio), interruptions handled", glive_phone: "Natural voice on the patient's phone; needs your own call server. Tamil not yet confirmed" }[k]}</td><td class="n">${e.perCall ? inrSmall(e.perCall) : "₹0"}</td><td class="n">${e.total ? inr(e.total) : "₹0"}</td></tr>`;
           }).join("")}</tbody>`;
 
         // One call, itemised, per model.
@@ -300,12 +350,25 @@
         const platformPer = calls ? plan.cost / calls : P.eleven.perMin * v.callMin;
         const ph = phoneCost(1);
         const ivr = ivrCost(1);
-        el("percall").innerHTML = `<thead><tr><th>One ${v.callMin}-minute call</th>${Object.values(P.claude).map(m => `<th class="n">${m.label.replace("Claude ", "")}</th>`).join("")}</tr></thead><tbody>
-          <tr><td>Claude tokens (~${num(P.tokensPerMin.in * v.callMin)} in, ~${num(P.tokensPerMin.out * v.callMin)} out)</td>${Object.keys(P.claude).map(k => `<td class="n">${inrSmall(claudePerCall(k))}</td>`).join("")}</tr>
-          <tr><td>+ ElevenLabs platform <span class="s">(${plan.name} plan, spread over your calls)</span></td>${Object.keys(P.claude).map(() => `<td class="n">${inrSmall(platformPer)}</td>`).join("")}</tr>
-          <tr><td>+ Phone line <span class="s">(${esc(P.phone[v.phone].label.split(" (")[0])}, billed ${ph.billedMin} min)</span></td>${Object.keys(P.claude).map(() => `<td class="n">${inrSmall(ph.perCallUsd)}</td>`).join("")}</tr>
-          <tr class="sum"><td>ElevenLabs phone call, total</td>${Object.keys(P.claude).map(k => `<td class="n">${inrSmall(claudePerCall(k, P.eleven.llmMarkup) + platformPer + ph.perCallUsd)}</td>`).join("")}</tr>
-          <tr><td>For comparison: <b>IVR phone call</b> (${v.ivrSec} s, no Claude)<div class="s">Line ${inrSmall(ivr.lineUsd)} + prompts ${inrSmall(ivr.ttsUsd)}</div></td>${Object.keys(P.claude).map(() => `<td class="n">${inrSmall(ivr.perCall)}</td>`).join("")}</tr>
+        const models = Object.keys(P.llm);
+        const live = geminiLivePerCall();
+        el("percall").innerHTML = `<thead><tr><th>One ${v.callMin}-minute call</th>${models.map(k => `<th class="n">${esc(llmRates(k).label.replace("Claude ", "")).replace("Gemini ", "Gemini<br/>")}</th>`).join("")}</tr></thead><tbody>
+          <tr><td>AI model tokens (~${num(P.tokensPerMin.in * v.callMin)} in, ~${num(P.tokensPerMin.out * v.callMin)} out)</td>${models.map(k => `<td class="n">${inrSmall(claudePerCall(k))}</td>`).join("")}</tr>
+          <tr><td>+ ElevenLabs platform <span class="s">(${plan.name} plan, spread over your calls)</span></td>${models.map(() => `<td class="n">${inrSmall(platformPer)}</td>`).join("")}</tr>
+          <tr><td>+ Phone line <span class="s">(${esc(P.phone[v.phone].label.split(" (")[0])}, billed ${ph.billedMin} min)</span></td>${models.map(() => `<td class="n">${inrSmall(ph.perCallUsd)}</td>`).join("")}</tr>
+          <tr class="sum"><td>ElevenLabs phone call, total</td>${models.map(k => `<td class="n">${inrSmall(claudePerCall(k, P.eleven.llmMarkup) + platformPer + ph.perCallUsd)}</td>`).join("")}</tr>
+          <tr><td>For comparison: <b>Gemini Live phone call</b> (no separate AI model or ElevenLabs)<div class="s">Gemini audio ${inrSmall(live)} + line ${inrSmall(ph.perCallUsd)}, plus the call server (${inr(v.bridgeUsd)}/month)</div></td>${models.map(() => `<td class="n">${inrSmall(live + ph.perCallUsd)}</td>`).join("")}</tr>
+          <tr><td>For comparison: <b>IVR phone call</b> (${v.ivrSec} s, no AI)<div class="s">Line ${inrSmall(ivr.lineUsd)} + prompts ${inrSmall(ivr.ttsUsd)}</div></td>${models.map(() => `<td class="n">${inrSmall(ivr.perCall)}</td>`).join("")}</tr>
+        </tbody>`;
+
+        // Real-call engines × phone lines.
+        const lines = Object.keys(P.phone);
+        const realEngines = [["glive_phone", "Gemini Live + phone line"], ["eleven_phone", `ElevenLabs + ${llmRates(v.model).label}`], ["ivr_phone", "IVR keypad menu (no AI)"]];
+        el("linecmp").innerHTML = `<thead><tr><th>Engine</th>${lines.map(k => `<th class="n">${esc(P.phone[k].label.split(" (")[0])}<div class="s" style="text-transform:none;letter-spacing:0;font-weight:500">${esc(P.phone[k].label.split(" (")[1]?.replace(")", "") ?? "")}</div></th>`).join("")}</tr></thead><tbody>
+          ${realEngines.map(([k, l]) => `<tr class="${k === v.engine ? "on" : ""}"><td><b>${esc(l)}</b></td>${lines.map(line => {
+            const e = engineCost(k, calls, minutes, line);
+            return `<td class="n ${line === v.phone && k === v.engine ? "" : ""}">${inrSmall(e.perCall)}<div class="s">${inr(e.total)}/month</div></td>`;
+          }).join("")}</tr>`).join("")}
         </tbody>`;
 
         renderServices(g, plans, calls, minutes);
@@ -325,7 +388,7 @@
              `Each trip plan = 4 requests (walk, transit, car, two-wheeler), cached 5 min per starting point. With every mode on, the two-wheeler and toll requests use up Enterprise's 7,000 first, so about <b>3,500 plans a month are free</b>.`,
              "Cheaper: turn off toll prices (car drops to Pro) or the two-wheeler route in the routes function."],
             "time with live traffic, distance, tolls and bus/metro fare. Auto, cab and fuel prices are our own fare rules, since Google doesn't price them.",
-            "Key: GOOGLE_MAPS_API_KEY (server only). Without it the planner uses estimates, free."),
+            "Auth: OAuth as the dev service account (ADC locally, GOOGLE_SERVICE_ACCOUNT_JSON on Netlify), billed to Maps Provision. Without it the planner uses estimates, free."),
           svc("Anthropic Claude API", "The brain of the AI call",
             "only a small trial credit for new accounts; no ongoing free tier.",
             ["Per million tokens: Opus 5.5 $4 in / $20 out; Sonnet 5.5 $2 / $10; Haiku 5.5 $0.10 / $0.50.",
@@ -334,6 +397,16 @@
              "We use Opus 5.5 by default. Haiku is about 40× cheaper per call and may be enough for this short script. Test it on real calls before switching."],
             "deciding what to say on the arrival call and writing the clinic's summary (coming or not, ETA, travel mode, note for the doctor).",
             "Key: ANTHROPIC_API_KEY (server only), for the Claude + browser speech engine."),
+          svc("Google Gemini API", "Alternative brain, or the whole voice agent (Live)",
+            "a free tier on most models, but Google may use free-tier prompts to improve its products, so don't send patient details on it. Paid tier assumed here.",
+            [`Text models, per million tokens: 3.1 Pro $2 in / $12 out; 3.8 Flash $0.75 / $3.75 until 31 Dec 2026, then $1.50 / $7.50; 3.5 Flash-Lite $0.30 / $2.50. Thinking tokens bill as output.`,
+             `On this script that's about ${inrSmall(claudePerCall("gpro"))} on 3.1 Pro, ${inrSmall(claudePerCall("gflash"))} on 3.8 Flash and ${inrSmall(claudePerCall("glite"))} on 3.5 Flash-Lite per call (Claude Haiku is still the cheapest text model).`,
+             "<b>Gemini Live</b> (3.8 Live, 3.1 Flash Live) hears and speaks itself: audio in $0.005/min, audio out $0.018/min. It replaces both the AI model and ElevenLabs, so it's the cheapest AI phone call here.",
+             `At your settings: ${inrSmall(geminiLivePerCall())} of Gemini audio per call. Long conversations are partly billed on tokens, so treat this as an estimate.`,
+             "<b>What Live needs:</b> no phone line of its own. Exotel (Voicebot applet) or Plivo (Audio Streams) streams the call audio over a WebSocket to your server, which relays it to Gemini Live and back. Netlify functions can't hold that connection, so it runs on e.g. Cloud Run (Mumbai). Audio: Gemini takes 16 kHz PCM and returns 24 kHz; Exotel streams 8 kHz by default and can be set to 16 kHz.",
+             "<b>Tamil:</b> not confirmed for Gemini Live in what we found. Test before choosing it."],
+            "not wired in the demo yet: the AI call function uses Claude. Gemini Flash would be a drop-in swap; Gemini Live needs the call server above.",
+            "Sources: <a href=\"https://aistudio.google.com/docs/pricing\" target=\"_blank\" rel=\"noopener\">Gemini API pricing</a> · <a href=\"https://blog.google/innovation-and-ai/technology/developers-tools/build-real-time-voice-applications-gemini-audio/\" target=\"_blank\" rel=\"noopener\">Gemini 3.8 Live announcement</a>"),
           svc("ElevenLabs Agents", "Voice, hearing, phone line",
             "15 call minutes a month on the free plan (4 calls at once).",
             ["Plans: Starter $6 (75 min), Creator $22 (275 min), Pro $99 (1,238 min), Scale $299 (3,738 min), Business $990 (12,375 min). Every extra minute $0.08.",
@@ -345,10 +418,10 @@
           svc("Phone line (real calls only)", "Carrier",
             "none.",
             ["<b>Plivo:</b> ₹0.38/min within India, billed in 30-second pulses; ₹200/month per number. India-registered businesses only.",
-             "<b>Exotel:</b> no published per-minute rate (third-party figure ≈ ₹0.80/min); prepaid bundles from ₹9,999; 18% GST.",
+             "<b>Exotel:</b> no published per-minute rate (third-party figure ≈ ₹0.80/min); prepaid bundles from ₹9,999; 18% GST. Its <b>Voicebot applet</b> (AgentStream) streams the call both ways over a WebSocket, so it works with Gemini Live as well as ElevenLabs (SIP). Get the per-minute rate, number rental and plan fee in writing.",
              "<b>Twilio:</b> $0.0496/min to Indian mobiles, but it can only call India from a <b>non-Indian</b> number, which patients may not pick up.",
              "Patients must have agreed to be called (TRAI rules), e.g. a checkbox at booking."],
-            "ElevenLabs places the call over a SIP trunk from the carrier (recommended for India) or Twilio.",
+            "ElevenLabs places the call over a SIP trunk from the carrier (recommended for India) or Twilio. Gemini Live: the carrier places the call and streams its audio to your call server.",
             "Set ELEVENLABS_PHONE_PROVIDER=sip or twilio."),
           svc("Razorpay", "Payments",
             "₹0 setup, ₹0 annual fee.",

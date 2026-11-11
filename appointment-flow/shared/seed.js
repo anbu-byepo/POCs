@@ -21,10 +21,10 @@ function baseState(nowMs) {
       slotStyle: "exact", // exact | range
       graceMin: 10,
       callBeforeMin: 15,
-      callType: "voice", // voice | ivr
+      callType: "ivr", // arrival calls are IVR phone calls (keypad menu, no AI)
       callLanguage: "en", // en | ta
       callEngine: "claude", // script | claude (Claude + browser speech, in the app) | elevenlabs (ElevenLabs voice + Claude)
-      elevenDelivery: "app", // app (talk in the patient app) | phone (real call through Twilio)
+      elevenDelivery: "app", // phone step with ElevenLabs: app = simulated phone call (demo) | phone = real call (SIP/Twilio)
       testPhone: "", // real calls go to this number instead of the demo patient's
       noShowCutoffMin: 30,
       holdMin: 10,

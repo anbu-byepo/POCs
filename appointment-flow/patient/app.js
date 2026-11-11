@@ -19,12 +19,13 @@ import {
   slotsFor, rangesFor, nextAvailable, slotLabel, createAppointment, confirmBooking, markPaid, markFailed,
   refundRule, refundQuote, requestRefund, cancelAppointment, checkIn, estimate, estimateText, finishCall,
   startSharing, startTrip, locationFresh, holdsSlot, isActive, notArrived, doctorOf, patientOf, apptMs, notify, avgConsult,
-  arrivalOf, checkInTime, etaMin, callFacts, TRAVEL_MODES, today
+  arrivalOf, checkInTime, etaMin, callFacts, TRAVEL_MODES, today, callChannel
 } from "../shared/flow.js";
 import { planTrip, costText, mapsUrl, travelMin, distanceKm, CLINIC_LL, DEMO_ORIGINS } from "../shared/trip.js";
 import { pay, reconcile, gatewayInfo, paySimulatedLink, startBackgroundWork, payerOf } from "../shared/payments.js";
 import { mountSimBar, paymentBadge, toast } from "../shared/ui.js";
 import { receiptHtml } from "../shared/receipt.js";
+import { etaDue, fetchEta } from "../shared/eta.js";
 import { MIN, esc, rupees, t12, tms, ymd, dateLabel, shortDate, addDays, inFrame } from "../shared/util.js";
 
 const frame = document.getElementById("frame");
@@ -279,7 +280,7 @@ function useDemoOrigin(key) {
 }
 
 // Real times, distances, tolls and transit fares from the Google Maps Routes
-// API (through /api/routes so the key stays on the server). Without a key the
+// API (through /api/routes, OAuth with a service account on the server). Without it the
 // planner uses its built-in estimates.
 async function fetchRoutes() {
   const o = ui.trip.origin;
@@ -331,6 +332,26 @@ function tripPlan(s, a) {
   return { ...plan, onDay };
 }
 
+// Expected time of reaching the clinic, for today's appointments not yet
+// checked in. On the way: from live location, the trip or what they said.
+// Not left yet: if they leave now by the best way (Google times when live).
+function reachInfo(s, a) {
+  if (a.date !== today(s) || !notArrived(a)) return null;
+  const now = s.clock.nowMs;
+  if (a.trip || a.location?.sharing) {
+    const arr = arrivalOf(s, a);
+    if (!arr) return null;
+    return { onWay: true, etaMs: arr.etaMs, mins: Math.max(0, Math.round((arr.etaMs - now) / MIN)), mode: a.trip?.mode ?? a.location?.mode };
+  }
+  const b = tripPlan(s, a).best;
+  if (!b) return null;
+  return { onWay: false, etaMs: now + b.totalMin * MIN, mins: b.totalMin, mode: b.key, label: b.label, live: b.source === "google" };
+}
+
+const reachText = r => r.onWay
+  ? `Reaching clinic ~${tms(r.etaMs)} · ${r.mins} min away`
+  : `Leave now, reach ~${tms(r.etaMs)} · ${r.mins} min by ${r.label.toLowerCase()}${r.live ? " (live traffic)" : ""}`;
+
 function beginTrip(id) {
   const s = getState();
   const a = findAppt(s, id);
@@ -341,13 +362,13 @@ function beginTrip(id) {
     const x = findAppt(st, id);
     startTrip(st, x, { mode: o.key, etaMs: st.clock.nowMs + o.totalMin * MIN, distanceKm: km, cost: o.cost, source: o.source });
     if (ui.trip.share) {
-      startSharing(st, x, o.key, km);
+      startSharing(st, x, o.key, km, tripOrigin());
       // Keep the simulated movement on Google's pace for this route.
       x.location.paceFactor = o.rideMin / travelMin(o.key, km, st.clock.nowMs);
     }
   });
   go("appt", { apptId: id });
-  toast(`On your way by ${o.label.toLowerCase()}`, ui.trip.share ? "Sharing your location with the clinic until you check in." : "The clinic knows when to expect you.");
+  toast(`On your way by ${o.label.toLowerCase()}`, ui.trip.share ? "Sharing your arrival time with the clinic until you check in. Your location stays on your phone." : "The clinic knows when to expect you.");
 }
 
 // ---------- arrival call ----------
@@ -408,11 +429,11 @@ const IVR = {
   }
 };
 
-// Calls that ring in this app (real phone calls ring the patient's phone).
+// Calls that ring in this app (phone calls ring the patient's phone instead).
 function ringingCall(s) {
   for (const a of myAppts(s)) {
     const call = a.calls.at(-1);
-    if (call?.status === "ringing" && call.provider !== "elevenlabs_phone") return { a, call };
+    if (call?.status === "ringing" && callChannel(call) === "app") return { a, call };
   }
   return null;
 }
@@ -751,6 +772,7 @@ function apptCard(s, a) {
     <div class="between"><div class="name">${esc(d.name)}</div>${paymentBadge(a)}</div>
     <div class="sub">${dateLabel(a.date, today(s))} · ${esc(slotLabel(s, a))} · ${esc(s.clinic.name)}</div>
     <div class="sub" style="color:var(--ink);font-weight:600">${esc(statusText(s, a))}</div>
+    ${(r => (r ? `<div class="sub">🕒 ${esc(reachText(r))}</div>` : ""))(reachInfo(s, a))}
   </div>`;
 }
 
@@ -942,9 +964,10 @@ function tripCard(s, a) {
     const mode = a.trip?.mode ?? loc.mode;
     const fresh = loc?.sharing && locationFresh(s, a);
     return `<div class="card tint">
-      <div class="between"><div class="name">On your way · ${esc(TRAVEL_MODES[mode] ?? "")}</div>${loc?.sharing ? `<span class="badge ${fresh ? "ok" : "amber"}">${fresh ? "Location live" : "No update"}</span>` : `<span class="badge info">Location off</span>`}</div>
-      ${arr ? `<div class="sub" style="color:var(--ink)"><b>Arriving around ${tms(arr.etaMs)}</b>${loc?.sharing ? ` · ${loc.distanceKm.toFixed(1)} km to go` : ""}</div>` : ""}
-      <div class="sub">${loc?.sharing ? "The clinic sees roughly how far away you are, until you check in." : "The clinic is expecting you at that time."}</div>
+      <div class="between"><div class="name">On your way · ${esc(TRAVEL_MODES[mode] ?? "")}</div>${loc?.sharing ? `<span class="badge ${fresh ? "ok" : "amber"}">${fresh ? "Live ETA on" : "No update"}</span>` : `<span class="badge info">Live ETA off</span>`}</div>
+      ${arr ? `<div class="sub" style="color:var(--ink)"><b>Arriving around ${tms(arr.etaMs)}</b> · ${Math.max(0, Math.round((arr.etaMs - s.clock.nowMs) / MIN))} min away${loc?.sharing ? ` · ${loc.distanceKm.toFixed(1)} km to go` : ""}</div>` : ""}
+      ${arr?.live ? `<div class="sub">⚡ ${esc(arr.live.label.charAt(0).toUpperCase() + arr.live.label.slice(1))}${loc.eta && !loc.eta.error ? ` · updated ${tms(loc.eta.at)}${loc.eta.trafficMin > 0 ? ` · +${loc.eta.trafficMin} min traffic` : ""}` : ""}</div>` : loc?.eta?.error ? `<div class="sub">Live ETA unavailable (${esc(loc.eta.error)}), using estimate</div>` : ""}
+      <div class="sub">${loc?.sharing ? "The clinic sees only when you'll arrive, not where you are." : "The clinic is expecting you at that time."}</div>
       <div class="actions"><a class="btn primary sm" href="${esc(mapsUrl(mode, ui.trip.origin))}" target="_blank" rel="noopener">Navigate in Google Maps</a>
         ${loc?.sharing ? `<button class="btn outline sm" data-action="stop-sharing">Stop sharing</button>` : ""}
         <button class="btn ghost sm" data-action="sheet" data-sheet="late">Running late?</button></div>
@@ -954,8 +977,13 @@ function tripCard(s, a) {
   const b = plan.best;
   return `<div class="card">
     <div class="name">Getting there</div>
-    ${b ? `<div class="row"><div style="font-size:24px">${b.icon}</div><div><div class="sub" style="color:var(--ink)"><b>${esc(b.label)}</b> · ${b.totalMin} min · ${costText(b.cost)}</div>
-      <div class="sub">${plan.onDay ? (b.leaveBy > s.clock.nowMs + MIN ? `Leave by ${tms(b.leaveBy)} to arrive by ${tms(plan.arriveBy)}` : `Leave now to arrive around ${tms(b.arriveMs)}`) : `Leave around ${tms(b.leaveBy)} on the day`} · ${esc(plan.traffic.label.toLowerCase())}</div></div></div>` : ""}
+    ${b ? `<div class="sub">${plan.onDay ? `Be there by ${tms(plan.arriveBy)}. Arrival if you leave now` : `Be there by ${tms(plan.arriveBy)} on the day. Leave by`} · ${plan.source === "google" ? "live traffic from Google Maps" : "estimated"} · ${esc(plan.traffic.label.toLowerCase())}</div>
+      <table class="modes">${plan.options.map(o => `<tr${o === b ? ' class="best"' : ""}>
+        <td>${o.icon}</td>
+        <td>${esc(o.label)}${o === b ? ' <span class="badge ok">Best</span>' : ""}<div class="s">${costText(o.cost)}</div></td>
+        <td class="n">${o.totalMin} min</td>
+        <td class="n">${plan.onDay ? `<b>${tms(o.arriveMs)}</b><div class="s" style="color:${o.onTime ? "var(--accent-dark)" : "var(--warn-ink)"}">${o.onTime ? "on time" : `${-o.spareMin} min late`}</div>` : `leave ${tms(o.leaveBy)}`}</td>
+      </tr>`).join("")}</table>` : ""}
     <div class="actions"><button class="btn primary sm" data-action="nav" data-to="trip">${plan.onDay ? "Plan my trip" : "See ways to get there"}</button>
     ${plan.onDay ? `<button class="btn outline sm" data-action="sheet" data-sheet="late">I'll be late</button>` : ""}</div>
     ${a.lateNote ? `<div class="sub">You told the clinic: about ${a.lateNote.minutes} min late (${tms(a.lateNote.at)}).</div>` : ""}
@@ -1040,7 +1068,7 @@ function screenTrip(s) {
   const where = ui.trip.located === "asking" ? "Finding you…" : gps ? "From your current location"
     : `${{ denied: "Location is off. ", far: "You're far from the clinic. ", waiting: "No location yet. " }[ui.trip.located] ?? ""}Demo start: <select data-action-change="trip-origin" aria-label="Demo starting point">${Object.entries(DEMO_ORIGINS).map(([k, o]) => `<option value="${k}" ${k === ui.trip.demo ? "selected" : ""}>${esc(o.label)}</option>`).join("")}</select>`;
   const srcLine = plan.source === "google" ? `🗺️ Times from Google Maps${plan.onDay ? ", live traffic" : ""}`
-    : ui.trip.googleBusy ? "🗺️ Asking Google Maps…" : ui.trip.googleError ? `Estimated times (Google Maps failed: ${esc(ui.trip.googleError)})` : `Estimated times${ui.routes && !ui.routes.live ? " · Google Maps key not set yet" : ""} · 🚦 ${esc(plan.traffic.label)}`;
+    : ui.trip.googleBusy ? "🗺️ Asking Google Maps…" : ui.trip.googleError ? `Estimated times (Google Maps failed: ${esc(ui.trip.googleError)})` : `Estimated times${ui.routes && !ui.routes.live ? " · Google Maps not connected yet" : ""} · 🚦 ${esc(plan.traffic.label)}`;
   const breakup = o => `<details class="breakup" ${ui.trip.open === o.key ? "open" : ""} data-key="${o.key}"><summary>Cost breakup</summary>
       ${o.breakup.lines.length ? `<table>${o.breakup.lines.map(l => `<tr><td>${esc(l.label)}${l.detail ? `<div class="s">${esc(l.detail)}</div>` : ""}</td><td>₹${l.amount}</td></tr>`).join("")}
         <tr class="tot"><td>Total</td><td>${costText(o.cost)}</td></tr></table>` : ""}
@@ -1064,7 +1092,7 @@ function screenTrip(s) {
       <div class="sub">${srcLine}</div>
       <div class="actions">${[["two_wheeler", "🛵 I have a two-wheeler"], ["car", "🚗 I have a car"]].map(([k, l]) => `<span class="chip ${ui.trip.have[k] ? "on" : ""}" data-action="trip-have" data-v="${k}">${l}</span>`).join("")}</div>
       ${plan.options.map(row).join("") || `<div class="note">No routes found from here.</div>`}
-      ${plan.onDay ? `<label class="choice ${ui.trip.share ? "on" : ""}" data-action="trip-share"><input type="checkbox" ${ui.trip.share ? "checked" : ""} tabindex="-1" /><div><div class="t">Share my location with the clinic</div><div class="s">Only until you check in, only for today. The queue plans around you more accurately.</div></div></label>` : ""}
+      ${plan.onDay ? `<label class="choice ${ui.trip.share ? "on" : ""}" data-action="trip-share"><input type="checkbox" ${ui.trip.share ? "checked" : ""} tabindex="-1" /><div><div class="t">Keep the clinic updated on when I'll arrive</div><div class="s">Uses your location on this phone to work out a live arrival time. The clinic sees only that time, never where you are. Stops when you check in.</div></div></label>` : ""}
     </div>
     <div class="footer">
       ${pick ? `<a class="btn outline block" href="${esc(pick.url)}" target="_blank" rel="noopener">Open ${esc(pick.label.toLowerCase())} route in Google Maps</a>` : ""}
@@ -1169,7 +1197,7 @@ function renderDev(s) {
   devInner.innerHTML = `
     <label>Signed in as <select data-dev="me">${s.patients.map(p => `<option value="${p.id}" ${p.id === s.me ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select></label>
     <p>Gateway: <b>${esc(ui.gateway?.label ?? "…")}</b>${ui.gateway?.reason ? ` (${esc(ui.gateway.reason)})` : ""}</p>
-    <p>Arrival calls: <b>${{ script: "Scripted", claude: ui.ai?.live ? `Claude (${esc(ui.ai.model)}) + browser speech` : "Claude selected, no key → scripted", elevenlabs: s.settings.elevenDelivery === "phone" ? "ElevenLabs real phone call (rings a real phone, not this app)" : ui.eleven?.live && ui.eleven?.agent ? "ElevenLabs voice + Claude, in this app" : `ElevenLabs selected, not set up (${esc(ui.eleven?.reason ?? "")})` }[s.settings.callEngine === "auto" ? "claude" : s.settings.callEngine] ?? ""}</b></p>
+    <p>Arrival calls: <b>IVR phone calls</b> (ring the patient's phone, not this app; the clinic enters the keypress in this demo)</p>
     <label><input type="checkbox" data-dev="drop" ${ui.dropCallback ? "checked" : ""} /> After a successful payment, lose Razorpay's success callback (tests the re-check)</label>
     <label>Demo starting point (when location is off or far away): <select data-dev="origin">${Object.entries(DEMO_ORIGINS).map(([k, o]) => `<option value="${k}" ${k === ui.trip.demo ? "selected" : ""}>${esc(o.label)} (${distanceKm(o, CLINIC_LL).toFixed(1)} km)</option>`).join("")}</select></label>
     <p>Routes: <b>${ui.routes?.live ? "Google Maps Routes API" : "Built-in estimates"}</b>${!ui.routes?.live && ui.routes?.reason ? ` (${esc(ui.routes.reason)})` : ""}</p>
@@ -1397,6 +1425,27 @@ subscribe(() => {
   pushNew();
   render();
 });
+// Live ETA while sharing location: the phone works out pace and walk/drive
+// (shared/eta.js) and asks Google, through our server, every few minutes.
+const etaBusy = new Set();
+async function refreshEtas() {
+  if (!ui.routes?.live) return;
+  const s = getState();
+  for (const a of s.appointments.filter(x => x.patientId === s.me && notArrived(x) && x.location?.sharing)) {
+    if (etaBusy.has(a.id) || !etaDue(a.location, s.clock.nowMs)) continue;
+    etaBusy.add(a.id);
+    const at = s.clock.nowMs;
+    const km = a.location.distanceKm;
+    const result = await fetchEta(a.location, CLINIC_LL).catch(err => ({ error: err.message, mode: "drive" }));
+    update(st => {
+      const x = findAppt(st, a.id);
+      if (x?.location) x.location.eta = { ...result, at, km, realAt: Date.now() };
+    });
+    etaBusy.delete(a.id);
+  }
+}
+setInterval(refreshEtas, 3000);
+
 fetch("/api/routes/config").then(r => r.json()).catch(() => ({ live: false, reason: "Routes server not reachable" })).then(cfg => {
   ui.routes = cfg;
   fetchRoutes();
