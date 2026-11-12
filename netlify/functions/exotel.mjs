@@ -12,21 +12,24 @@
  *        call has ended (no answer, busy, failed, hung up).
  *
  * Called BY EXOTEL (put these URLs in the flow; k = EXOTEL_WEBHOOK_SECRET):
- *   GET  /api/exotel/greeting?k=...                  Greeting applet, dynamic text:
- *        "Hello Lakshmi, Nair Endocrine Clinic, about your 10:00 AM appointment..."
- *   GET  /api/exotel/answer?k=...&answer=eta20       Passthru applet on each branch
- *   POST /api/exotel/status?k=...                    StatusCallback when the call ends
+ *   GET  /api/exotel/greeting?k=...                 Greeting applet, dynamic text (name, time, doctor)
+ *   GET  /api/exotel/answer?q=attend&a=yes          Passthru applet after each keypress
+ *   GET  /api/exotel/answer?q=done                  Passthru just before the closing message
+ *        (k is optional here: a CallSid this server placed is accepted without it)
+ *   POST /api/exotel/status?k=...                   StatusCallback when the call ends
  *
- * The IVR flow to build in Exotel (App Bazaar), English and/or Tamil:
- *   Greeting (dynamic URL /greeting)
- *   IVR Menu "Press 1 if you're on the way. 2 if you're at the clinic. 3 to cancel."
- *     1 -> IVR Menu "How far away are you? 1 under 10 minutes, 2 ten to twenty,
- *          3 twenty to forty, 4 more than forty."
- *            1..4 -> Passthru /answer?answer=eta10|eta20|eta40|eta60 -> Greeting "Thank you" -> Hangup
- *     2 -> Passthru /answer?answer=here   -> Greeting "Please scan the QR at the counter" -> Hangup
- *     3 -> IVR Menu "Press 1 to confirm cancelling, 2 to go back."
- *            1 -> Passthru /answer?answer=cancel -> Greeting "Cancelled" -> Hangup
- *            2 -> back to the first menu
+ * The IVR flow as built in Exotel (App 1383043, "Ninto arrival call"); audio
+ * clips are in appointment-flow/ivr-audio/. Q2-Q5 use Gather (1 digit) followed
+ * by a Passthru with q= only; this server maps the pressed digit (1/2, 9 = talk
+ * to the team) to the answer, so the flow needs no per-key branches.
+ *   Opening greeting -> Q1 IVR Menu
+ *     1 -> Passthru q=attend&a=yes -> Gather Q2 -> Passthru q=late -> Gather Q4
+ *          -> Passthru q=visit -> Gather Q5 -> Passthru q=companion
+ *          -> Passthru q=done -> Gather step=closing (reply + closing) -> Hangup
+ *     2 -> Passthru q=attend&a=no -> Gather Q3 -> Passthru q=change
+ *          -> Passthru q=done -> Gather step=closing (reply + closing) -> Hangup
+ *   (Q6 reports skipped for now. Not yet in the flow: 9 -> Connect to reception,
+ *    * -> repeat, the "wrong input" clip.)
  *
  * Env:
  *   EXOTEL_API_KEY, EXOTEL_API_TOKEN, EXOTEL_ACCOUNT_SID   API credentials (Exotel dashboard -> API settings)
@@ -42,13 +45,48 @@
  */
 
 import { getStore } from "@netlify/blobs";
+import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 
 export const config = { path: "/api/exotel/*" };
 
 const env = k => process.env[k] ?? "";
 const REQUIRED = ["EXOTEL_API_KEY", "EXOTEL_API_TOKEN", "EXOTEL_ACCOUNT_SID", "EXOTEL_CALLER_ID", "EXOTEL_APP_ID", "EXOTEL_WEBHOOK_SECRET"];
-const ANSWERS = ["eta10", "eta20", "eta40", "eta60", "here", "cancel"];
+// Question -> allowed answers (same as shared/flow.js IVR_VALUES).
+const ANSWERS = { attend: ["yes", "no"], late: ["yes", "no"], change: ["reschedule", "cancel"], visit: ["in_person", "video"], companion: ["yes", "no"], reports: ["yes", "no"], agent: ["yes"] };
 const ENDED = ["completed", "failed", "busy", "no-answer", "canceled"];
+
+// ---------- spoken replies ----------
+// After each answer the caller hears a reply for it ("சரி, லேட்டா வர்றீங்கன்னு
+// டாக்டர் கிட்ட சொல்லிடறோம்") and then the next question. Exotel's Gather
+// applets for Q2-Q5 and the closing load their prompt from GET /gather?step=...
+// (dynamic URL mode); this server answers with an audio_url that joins
+// [reply to the last answer] + [the step's clip], served by GET /audio/<a>+<b>.wav.
+// Clips: appointment-flow/ivr-audio/*.wav (8 kHz mono 16-bit, Exotel's format).
+const AUDIO_DIR = new URL("../../appointment-flow/ivr-audio/", import.meta.url);
+const STEP_CLIP = { late: "02_q2_late", change: "03_q3_reschedule", visit: "04_q4_visit_mode", companion: "05_q5_companion", closing: "08_closing" };
+const CLIPS = new Set([...Object.values(STEP_CLIP), ...Object.entries(ANSWERS).flatMap(([q, as]) => as.map(a => `r_${q}_${a}`))]);
+const clipCache = new Map();
+async function pcmOf(name) {
+  if (!clipCache.has(name)) {
+    const buf = await readFile(fileURLToPath(new URL(`${name}.wav`, AUDIO_DIR)));
+    // Walk the RIFF chunks to the "data" chunk.
+    let i = 12;
+    while (i + 8 <= buf.length && buf.toString("ascii", i, i + 4) !== "data") i += 8 + buf.readUInt32LE(i + 4);
+    clipCache.set(name, buf.subarray(i + 8, i + 8 + buf.readUInt32LE(i + 4)));
+  }
+  return clipCache.get(name);
+}
+function wav(pcm) {
+  const h = Buffer.alloc(44);
+  h.write("RIFF", 0); h.writeUInt32LE(36 + pcm.length, 4); h.write("WAVE", 8);
+  h.write("fmt ", 12); h.writeUInt32LE(16, 16); h.writeUInt16LE(1, 20); h.writeUInt16LE(1, 22);
+  h.writeUInt32LE(8000, 24); h.writeUInt32LE(16000, 28); h.writeUInt16LE(2, 32); h.writeUInt16LE(16, 34);
+  h.write("data", 36); h.writeUInt32LE(pcm.length, 40);
+  return Buffer.concat([h, pcm]);
+}
+const GAP = Buffer.alloc(8000 * 2 * 0.3); // 0.3 s pause between reply and question
+const publicBase = req => (env("EXOTEL_PUBLIC_URL") || new URL(req.url).origin).replace(/\/$/, "");
 
 function json(body, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -136,8 +174,8 @@ async function placeCall(body) {
   });
   if (env("EXOTEL_PUBLIC_URL")) {
     form.set("StatusCallback", `${env("EXOTEL_PUBLIC_URL").replace(/\/$/, "")}/api/exotel/status?k=${encodeURIComponent(env("EXOTEL_WEBHOOK_SECRET"))}`);
-    form.set("StatusCallbackEvents[0]", "terminal");
-    form.set("StatusCallbackContentType", "application/json");
+    // Exotel sends this when the call ends (form-encoded); the event list and
+    // content type are left at their defaults (the API rejected "StatusCallbackEvents[0]").
   }
   const auth = Buffer.from(`${env("EXOTEL_API_KEY")}:${env("EXOTEL_API_TOKEN")}`).toString("base64");
   const res = await fetch(`https://${env("EXOTEL_SUBDOMAIN") || "api.exotel.com"}/v1/Accounts/${sid}/Calls/connect.json`, {
@@ -149,7 +187,7 @@ async function placeCall(body) {
   if (!res.ok) throw Object.assign(new Error(data?.RestException?.Message ?? `Exotel ${res.status}`), { status: 502 });
   const callSid = data?.Call?.Sid;
   if (!callSid) throw Object.assign(new Error("Exotel returned no call id"), { status: 502 });
-  await save(callSid, { apptId: body?.apptId ?? null, greeting: String(body?.greeting ?? "").slice(0, 400), status: "ringing", answer: null, startedAt: Date.now() });
+  await save(callSid, { apptId: body?.apptId ?? null, greeting: String(body?.greeting ?? "").slice(0, 400), status: "ringing", answers: {}, finished: false, startedAt: Date.now() });
   return { sid: callSid };
 }
 
@@ -168,29 +206,75 @@ export default async function handler(req) {
     if (req.method === "GET" && path === "result") {
       const rec = await load(url.searchParams.get("sid") ?? "");
       if (!rec) return json({ error: "Unknown call" }, 404);
-      return json({ done: Boolean(rec.answer) || ENDED.includes(rec.status), status: rec.status, answer: rec.answer, durationSecs: rec.durationSecs ?? null });
+      return json({ done: rec.finished || ENDED.includes(rec.status), status: rec.status, answers: rec.answers ?? {}, durationSecs: rec.durationSecs ?? null });
+    }
+
+    // Audio for Exotel: one clip or several joined with "+". Only known clip names.
+    const audio = path.match(/^audio\/([\w+]+)\.wav$/);
+    if (req.method === "GET" && audio) {
+      const names = audio[1].split("+");
+      if (!names.length || names.length > 3 || !names.every(n => CLIPS.has(n))) return new Response("Not found", { status: 404 });
+      const parts = [];
+      for (const n of names) parts.push(...(parts.length ? [GAP] : []), await pcmOf(n));
+      return new Response(wav(Buffer.concat(parts)), { headers: { "content-type": "audio/wav", "cache-control": "public, max-age=86400" } });
     }
 
     // ----- called by Exotel -----
-    if (["greeting", "answer", "status"].includes(path)) {
-      if (!fromExotel(url)) return new Response("Forbidden", { status: 403 });
+    if (["greeting", "answer", "status", "gather"].includes(path)) {
       const p = await params(req, url);
       const callSid = p.CallSid ?? p.callSid ?? "";
+      // Either the secret is in the URL, or (Passthru links, which are typed into
+      // the Exotel dashboard without it) the CallSid is one this server placed.
+      // Call SIDs are long random ids, so they can't be guessed.
+      const known = (path === "answer" || path === "gather") && callSid && (await load(callSid));
+      if (!fromExotel(url) && !known) return new Response("Forbidden", { status: 403 });
       if (path === "greeting") {
         const rec = callSid ? await load(callSid) : null;
         return new Response(rec?.greeting || "Hello, this is your clinic calling about your appointment today.", { headers: { "content-type": "text/plain; charset=utf-8" } });
       }
       if (path === "answer") {
-        const answer = p.answer;
-        if (!ANSWERS.includes(answer) || !callSid) return new Response("Bad answer", { status: 400 });
-        await save(callSid, { answer, status: "answered" });
+        if (!callSid) return new Response("No CallSid", { status: 400 });
+        const rec = await load(callSid);
+        if (p.q === "done") {
+          await save(callSid, { finished: true, status: "answered" });
+          return new Response("OK");
+        }
+        // a= given in the link, or worked out from the key pressed in the Gather
+        // before it (Exotel sends it as digits="1"): 1 = first option, 2 = second,
+        // 9 = talk to the team. Anything else is ignored and the flow carries on.
+        const pressed = String(p.digits ?? "").replace(/"/g, "").trim();
+        const a = p.a ?? (pressed === "9" ? null : ANSWERS[p.q]?.[Number(pressed) - 1]);
+        const add = pressed === "9" ? { agent: "yes" } : ANSWERS[p.q]?.includes(a) ? { [p.q]: a } : null;
+        if (!add) {
+          await save(callSid, { last: null }); // no reply for a key we didn't understand
+          return p.a ? new Response("Bad answer", { status: 400 }) : new Response("OK");
+        }
+        const [q, a2] = Object.entries(add)[0];
+        await save(callSid, { answers: { ...(rec?.answers ?? {}), ...add }, last: q === "agent" ? null : `r_${q}_${a2}`, status: "answered" });
         return new Response("OK"); // 200 = Passthru continues on its success branch
+      }
+      if (path === "gather") {
+        // Dynamic Gather: reply to the last answer, then this step's question.
+        const step = url.searchParams.get("step");
+        if (!STEP_CLIP[step]) return json({ error: "Unknown step" }, 400);
+        const rec = await load(callSid);
+        const reply = rec?.last && CLIPS.has(rec.last) ? rec.last : null;
+        const base = `${publicBase(req)}/api/exotel/audio/`;
+        const closing = step === "closing";
+        return json({
+          gather_prompt: { audio_url: `${base}${[reply, STEP_CLIP[step]].filter(Boolean).join("+")}.wav` },
+          max_input_digits: 1,
+          finish_on_key: "",
+          input_timeout: closing ? 1 : 5,
+          repeat_menu: closing ? 0 : 2,
+          repeat_gather_prompt: { audio_url: `${base}${STEP_CLIP[step]}.wav` }
+        });
       }
       if (path === "status") {
         if (callSid) {
           const rec = await load(callSid);
           const status = String(p.Status ?? p.status ?? "").toLowerCase();
-          await save(callSid, { status: rec?.answer ? "answered" : status || "completed", callStatus: status, durationSecs: Number(p.ConversationDuration ?? p.Duration ?? 0) || null });
+          await save(callSid, { status: status || "completed", callStatus: status, durationSecs: Number(p.ConversationDuration ?? p.Duration ?? 0) || null });
         }
         return new Response("OK");
       }

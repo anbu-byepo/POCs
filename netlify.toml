@@ -23,6 +23,10 @@
 [functions]
   directory = "netlify/functions"
 
+# The IVR reply/question clips the Exotel function joins and serves.
+[functions.exotel]
+  included_files = ["appointment-flow/ivr-audio/*.wav"]
+
 # Plans, design sources and editor config live in the repo but aren't meant
 # to be served.
 [[redirects]]

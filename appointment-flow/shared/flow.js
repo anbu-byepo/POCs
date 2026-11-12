@@ -18,6 +18,7 @@ const BUFFER_MIN = 5;
 const RING_MIN = 2;
 const STALE_LOCATION_MIN = 15;
 const NEAR_KM = 0.3;
+const LATE_IVR_EXTRA_MIN = 10; // "running late" on the IVR = grace + this many minutes
 export const TRAVEL_MODES = MODE_LABELS;
 
 export const isActive = a => ACTIVE.includes(a.status);
@@ -53,7 +54,7 @@ export function slotsFor(s, doctor, date) {
 }
 
 // "10 to 11" style: one choice per hour; the booking takes the first free
-// exact slot in it, and the patient gets their check-in time ~2 hours before.
+// exact slot in it.
 export function rangesFor(s, doctor, date) {
   const byHour = new Map();
   for (const slot of slotsFor(s, doctor, date)) {
@@ -328,6 +329,9 @@ export function arrivalOf(s, a) {
   const call = a.calls.filter(c => c.status === "done").at(-1);
   const callAt = call ? (call.endedAt ?? call.startedAt) : 0;
   if (call?.outcome === "eta" && call.etaMin != null) told.push({ at: callAt, etaMs: callAt + call.etaMin * MIN, source: "call", label: `Said ~${call.etaMin} min on the call${call.mode ? ` (${MODE_LABELS[call.mode]?.toLowerCase()})` : ""}` });
+  // IVR "running late? yes" gives no minutes: assume they arrive LATE_IVR_EXTRA_MIN
+  // after their grace ends (so they're fitted in by that, not sent to the back).
+  if (call?.outcome === "late") told.push({ at: callAt, etaMs: apptMs(a) + (s.settings.graceMin + LATE_IVR_EXTRA_MIN) * MIN, source: "call", label: `Said they're running late on the call (assumed ~${s.settings.graceMin + LATE_IVR_EXTRA_MIN} min after the slot)` });
   if (call?.outcome === "at_clinic") told.push({ at: callAt, etaMs: callAt + 2 * MIN, source: "call", label: "Said they're at the clinic" });
   if (a.lateNote) told.push({ at: a.lateNote.at, etaMs: apptMs(a) + a.lateNote.minutes * MIN, source: "patient", label: `Said ~${a.lateNote.minutes} min late` });
   if (told.length) {
@@ -416,13 +420,6 @@ export function estimateText(est, arrived) {
   };
 }
 
-// Suggested check-in time, sent with the 2-hour reminder: when they're likely
-// to be seen, less 10 minutes, never earlier than 15 minutes before the slot.
-export function checkInTime(s, a) {
-  const est = estimate(s, a);
-  return Math.max(apptMs(a) - 15 * MIN, est.startMs - 10 * MIN);
-}
-
 // ---------- arrival calls ----------
 
 // Which voice engine handles Voice AI calls: scripted, Claude (in the patient
@@ -480,11 +477,29 @@ export function callFacts(s, a, lang = s.settings.callLanguage) {
 export function finishCall(s, a, { outcome, etaMin = null, transcript = [], note = "", coming = null, mode = null, summary = "", engine = null, costUsd = null, durationSecs = null }) {
   const call = a.calls.at(-1);
   if (!call || call.status === "done") return;
-  const COMING = { eta: "yes", at_clinic: "yes", cancelled: "no", no_answer: null };
+  const COMING = { eta: "yes", at_clinic: "yes", confirmed: "yes", late: "yes", cancelled: "no", reschedule: "no", not_coming: "no", no_answer: null };
   coming ??= outcome in COMING ? COMING[outcome] : "unsure";
   Object.assign(call, { status: "done", outcome, etaMin, transcript, note, coming, mode, summary, engine: engine ?? call.engine, costUsd, durationSecs, endedAt: s.clock.nowMs });
   if (outcome === "cancelled") cancelAppointment(s, a, "patient");
   log(s, `Call result for ${patientOf(s, a).name}: ${callResultText(call, { withMode: false })}`);
+}
+
+// The IVR's keypresses -> a call result. answers holds what the patient
+// pressed (all optional, the call can end anywhere):
+//   attend: yes|no   late: yes|no   change: reschedule|cancel
+//   visit: in_person|video   companion: yes|no   reports: yes|no   agent: yes
+export const IVR_QUESTIONS = ["attend", "late", "change", "visit", "companion", "reports", "agent"];
+export const IVR_VALUES = { attend: ["yes", "no"], late: ["yes", "no"], change: ["reschedule", "cancel"], visit: ["in_person", "video"], companion: ["yes", "no"], reports: ["yes", "no"], agent: ["yes"] };
+export function ivrResult(answers = {}) {
+  const x = answers;
+  const outcome = x.change === "cancel" ? "cancelled" : x.change === "reschedule" ? "reschedule" : x.attend === "no" ? "not_coming" : x.late === "yes" ? "late" : x.attend === "yes" ? "confirmed" : "unsure";
+  const details = [
+    x.visit === "video" ? "Wants a video consult" : x.visit === "in_person" ? "In person" : "",
+    x.companion === "yes" ? "Someone coming with them" : x.companion === "no" ? "Coming alone" : "",
+    x.reports === "yes" ? "Bringing old reports / prescription" : x.reports === "no" ? "No old reports" : "",
+    x.agent === "yes" ? "Asked to talk to the team (pressed 9)" : ""
+  ].filter(Boolean);
+  return { outcome, ...(outcome === "unsure" && !details.length ? { summary: "Answered but didn't press a key." } : { summary: details.join(" · ") }) };
 }
 
 // withMode: false for the clinic, which isn't shown how patients travel.
@@ -497,6 +512,10 @@ export function callResultText(call, { withMode = true } = {}) {
     eta: `Coming: about ${call.etaMin} min${how}`,
     at_clinic: "Coming: at the clinic, not checked in",
     cancelled: "Not coming: cancelled on the call",
+    confirmed: "Coming: confirmed on the call",
+    late: "Coming, but running late",
+    reschedule: "Not coming: wants another day (call to rebook)",
+    not_coming: "Not coming (hung up before saying reschedule or cancel)",
     unsure: "Not sure they can make it",
     no_answer: "No answer"
   }[call.outcome] ?? call.outcome;
@@ -566,8 +585,9 @@ export function runEngine(s) {
       }
       if (!a.reminders.twoHour && now >= slotMs - 2 * HOUR && a.createdAt < slotMs - 2 * HOUR) {
         a.reminders.twoHour = now;
-        a.checkInBy = checkInTime(s, a);
-        notify(s, a, { kind: "reminder", title: `Today at ${slotLabel(s, a)}`, body: `Based on how the clinic is running today, please check in by ${tms(a.checkInBy)}.`, actions: ["confirm", "cancel", "leaving"] });
+        // The app never tells a patient to "be there by" a time: their slot is
+        // the only time it gives. Late arrivals are fitted in by arrival.
+        notify(s, a, { kind: "reminder", title: `Today at ${slotLabel(s, a)}`, body: `${doctor.name} at ${slotLabel(s, a)}. Will you make it?`, actions: ["confirm", "cancel", "leaving"] });
       }
     }
     if (a.date !== day) continue;
@@ -629,10 +649,13 @@ export function runEngine(s) {
       continue;
     }
 
-    // IVR call for anyone not here by the trigger time -- unless their live
-    // ETA already tells us. One follow-up if they gave a time and are 10+
-    // min past it.
-    const quiet = notArrived(a) && !locationFresh(s, a);
+    // IVR call only for patients who are NOT sharing location. Anyone with
+    // "Keep the clinic updated" on is never called (automatic or follow-up):
+    // their phone already sends the ETA. If the phone goes quiet, the
+    // projection treats them as unknown instead of ringing them. Turning
+    // sharing off makes them a normal "no location" patient again.
+    // One follow-up if they gave a time on the call and are 10+ min past it.
+    const quiet = notArrived(a) && !loc?.sharing;
     if (quiet && !a.calls.length && now >= slotMs - st.callBeforeMin * MIN) startCall(s, a, "auto");
     const last = a.calls.at(-1);
     const promised = a.calls.filter(c => c.status === "done" && c.outcome === "eta").at(-1);

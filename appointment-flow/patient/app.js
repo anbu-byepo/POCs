@@ -1,7 +1,7 @@
 /**
  * Patient app (boards P1-P4 of the discussion doc): doctor profile -> date and
  * slot -> review (refund rule shown before paying) -> Razorpay -> confirmation;
- * reminders with Confirm / Cancel; the 2-hour check-in time; "I'm leaving
+ * reminders with Confirm / Cancel; "I'm leaving
  * now" trip planner (ways to get there with time, cost and a best pick, each
  * with Google Maps directions) and location sharing; "I'll be late"; QR
  * check-in and token; the live wait estimate and place in the dynamic queue;
@@ -19,7 +19,7 @@ import {
   slotsFor, rangesFor, nextAvailable, slotLabel, createAppointment, confirmBooking, markPaid, markFailed,
   refundRule, refundQuote, requestRefund, cancelAppointment, checkIn, estimate, estimateText, finishCall,
   startSharing, startTrip, locationFresh, holdsSlot, isActive, notArrived, doctorOf, patientOf, apptMs, notify, avgConsult,
-  arrivalOf, checkInTime, etaMin, callFacts, TRAVEL_MODES, today, callChannel
+  arrivalOf, etaMin, callFacts, TRAVEL_MODES, today, callChannel
 } from "../shared/flow.js";
 import { planTrip, costText, mapsUrl, travelMin, distanceKm, CLINIC_LL, DEMO_ORIGINS } from "../shared/trip.js";
 import { pay, reconcile, gatewayInfo, paySimulatedLink, startBackgroundWork, payerOf } from "../shared/payments.js";
@@ -312,14 +312,14 @@ const googleFresh = () => {
   return ui.trip.google && ui.trip.googleFor === `${o.lat.toFixed(3)},${o.lng.toFixed(3)}` ? ui.trip.google : null;
 };
 
-// When they need to be at the clinic to keep their place: the check-in time
-// (expected start - 10 min, not earlier than slot - 15) while it's ahead;
-// within grace, the end of grace; after that, as soon as possible.
+// The time the trip is planned around: their booked slot; within grace, the
+// end of grace; after that, now. The app never suggests any other
+// "be there by" time.
 function arriveBy(s, a) {
   const now = s.clock.nowMs;
   if (a.status === "reserved") return a.graceUntil;
   if (a.status === "late") return now;
-  return Math.max(now, a.date === today(s) ? checkInTime(s, a) : apptMs(a) - 10 * MIN);
+  return Math.max(now, apptMs(a));
 }
 
 function tripPlan(s, a) {
@@ -834,7 +834,6 @@ function screenSlots(s) {
       }).join("")}</div>
       <div class="section-label">${range ? "Time window" : "Time slot"}</div>
       <div class="slots ${range ? "ranges" : ""}">${grid || `<div class="sub">No slots.</div>`}</div>
-      ${range ? `<div class="note">You'll get your exact check-in time about 2 hours before, based on how the clinic is running that day.</div>` : ""}
     </div>
     <div class="footer"><button class="btn primary block" data-action="nav" data-to="review" ${ui.pick ? "" : "disabled"}>Continue</button></div>`;
 }
@@ -977,7 +976,7 @@ function tripCard(s, a) {
   const b = plan.best;
   return `<div class="card">
     <div class="name">Getting there</div>
-    ${b ? `<div class="sub">${plan.onDay ? `Be there by ${tms(plan.arriveBy)}. Arrival if you leave now` : `Be there by ${tms(plan.arriveBy)} on the day. Leave by`} · ${plan.source === "google" ? "live traffic from Google Maps" : "estimated"} · ${esc(plan.traffic.label.toLowerCase())}</div>
+    ${b ? `<div class="sub">${plan.onDay ? `Your slot: ${tms(plan.arriveBy)}. Arrival if you leave now` : `Your slot: ${tms(plan.arriveBy)}. Leave by`} · ${plan.source === "google" ? "live traffic from Google Maps" : "estimated"} · ${esc(plan.traffic.label.toLowerCase())}</div>
       <table class="modes">${plan.options.map(o => `<tr${o === b ? ' class="best"' : ""}>
         <td>${o.icon}</td>
         <td>${esc(o.label)}${o === b ? ' <span class="badge ok">Best</span>' : ""}<div class="s">${costText(o.cost)}</div></td>
@@ -1016,10 +1015,10 @@ function screenAppt(s) {
     const arr = arrivalOf(s, a);
     parts.push(`<div class="card estimate"><div class="section-label">Your place in the queue</div><div class="head">${est.unknown ? "Fitted in when you arrive" : `#${est.position} · in around ${tms(est.projectedMs)}`}</div><div class="subline">${esc(txt.head)}</div>
       <div class="sub">Booked for ${esc(slotLabel(s, a))}. ${arr?.firm ? `Based on you arriving around ${tms(arr.etaMs)}.` : "Assuming you arrive on time."} If you're late, you're fitted in by when you arrive, not sent to the end. The doctor is taking about ${est.avg} min per patient today.</div>
-      ${a.checkInBy && a.status === "booked" ? `<div class="sub" style="color:var(--ink)"><b>Check in by ${tms(a.checkInBy)}</b></div>` : ""}</div>`);
+</div>`);
     parts.push(tripCard(s, a));
   } else if (a.status === "booked") {
-    parts.push(`<div class="card"><div class="name">${dateLabel(a.date, today(s))}, ${esc(slotLabel(s, a))}</div><div class="sub">We'll remind you a day before and about 2 hours before, with your check-in time. Check-in and the live wait estimate open on the day.</div></div>`);
+    parts.push(`<div class="card"><div class="name">${dateLabel(a.date, today(s))}, ${esc(slotLabel(s, a))}</div><div class="sub">We'll remind you a day before and about 2 hours before. Check-in and the live wait estimate open on the day.</div></div>`);
     parts.push(tripCard(s, a));
   } else if (a.status === "pending_payment" || a.status === "expired") {
     parts.push(`<div class="warn">This booking isn't confirmed: ${esc(a.payment.error ?? "payment pending")}.</div>
@@ -1079,15 +1078,15 @@ function screenTrip(s) {
         <div class="between"><div class="t">${esc(o.label)}</div><div class="t">${costText(o.cost)}</div></div>
         <div class="s">${o.totalMin} min${o.wait ? ` (incl. ~${o.wait} min to get going)` : ""} · ${o.km.toFixed(1)} km · arrive ${tms(plan.onDay ? o.arriveMs : o.leaveBy + o.totalMin * MIN)}</div>
         ${o.transitLines.length ? `<div class="s">${esc(o.transitLines.join(" → "))}${o.walkMin ? ` · ${o.walkMin} min walking` : ""}</div>` : ""}
-        <div class="s">${plan.onDay ? (o.onTime ? (o.leaveBy > now + MIN ? `Leave by ${tms(o.leaveBy)} · ${o.spareMin} min spare` : `Leave now · ${o.spareMin} min spare`) : `<span style="color:var(--warn-ink)">About ${-o.spareMin} min after ${tms(plan.arriveBy)}</span>`) : `Leave by ${tms(o.leaveBy)}`}</div>
+        <div class="s">${plan.onDay ? (o.onTime ? (o.leaveBy > now + MIN ? `Leave by ${tms(o.leaveBy)} · ${o.spareMin} min spare` : `Leave now · ${o.spareMin} min spare`) : `<span style="color:var(--warn-ink)">About ${-o.spareMin} min after your slot</span>`) : `Leave by ${tms(o.leaveBy)}`}</div>
         ${o.tags.length ? `<div class="actions" style="margin-top:4px">${o.tags.map(t => `<span class="badge ${t === "Best pick" ? "ok" : "info"}">${t}</span>`).join("")}</div>` : ""}
         ${o.why ? `<div class="s" style="color:var(--accent-dark)">${esc(o.why)}</div>` : ""}
         ${breakup(o)}
       </div></div>`;
   return `${topbar("Getting there", "appt")}
     <div class="body">
-      <div class="h1">${plan.onDay ? (a.status === "late" ? "Get there as soon as you can" : `Be there by ${tms(plan.arriveBy)}`) : `Be there by ${tms(plan.arriveBy)} on ${dateLabel(a.date, today(s))}`}</div>
-      <div class="lede">${a.status === "late" ? "Your slot has passed, but you won't go to the end of the line: you're fitted in by when you arrive." : plan.onDay ? "That's when the doctor is likely to reach you, based on how the queue is moving. Arrive later and you're fitted in by your arrival time, not sent to the end." : "Times use the usual traffic for that hour. On the day, this updates with the live queue."}</div>
+      <div class="h1">${plan.onDay ? (a.status === "late" ? "Your slot has passed" : a.status === "reserved" ? `Slot held until ${tms(plan.arriveBy)}` : `Your slot: ${tms(plan.arriveBy)}`) : `Your slot: ${tms(plan.arriveBy)} on ${dateLabel(a.date, today(s))}`}</div>
+      <div class="lede">${a.status === "late" ? "Your slot has passed, but you won't go to the end of the line: you're fitted in by when you arrive." : plan.onDay ? "If you arrive later, you're fitted in by your arrival time, not sent to the end." : "Times use the usual traffic for that hour. On the day, this updates with the live queue."}</div>
       <div class="sub">📍 ${where} · ${tripKm().toFixed(1)} km as the crow flies</div>
       <div class="sub">${srcLine}</div>
       <div class="actions">${[["two_wheeler", "🛵 I have a two-wheeler"], ["car", "🚗 I have a car"]].map(([k, l]) => `<span class="chip ${ui.trip.have[k] ? "on" : ""}" data-action="trip-have" data-v="${k}">${l}</span>`).join("")}</div>
